@@ -419,3 +419,29 @@ a:focus-visible, button:focus-visible {
 }
 .status-inactive { background: #F1E4D8; color: #8A5A2B; }
 .status-active { background: #E4EBD9; color: var(--green-deep); }
+
+/* ---------- Content lists (Books / Q&A) ---------- */
+.content-list {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.content-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 4px;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--ink);
+}
+.content-item:hover { background: var(--surface); }
+.content-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.content-meta {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}

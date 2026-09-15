@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Q&amp;A — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="books.html">Books</a>
+      <a href="qa.html">Q&amp;A</a>
+    </nav>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px;">
+    <h1>Q&amp;A</h1>
+    <p id="level-note" class="section-lede">Loading your level…</p>
+
+    <div class="field" style="max-width:220px; margin-top:20px;">
+      <label for="topic-filter">Filter by topic</label>
+      <select id="topic-filter">
+        <option value="">All topics</option>
+      </select>
+    </div>
+
+    <div id="qa-list" class="content-list"></div>
+    <p id="empty-note" style="display:none;">No practice questions have been added for your level yet — check back soon.</p>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  let allQuestions = [];
+
+  function renderQuestions(items) {
+    const list = document.getElementById("qa-list");
+    const emptyNote = document.getElementById("empty-note");
+    list.innerHTML = "";
+
+    if (items.length === 0) {
+      emptyNote.style.display = "block";
+      return;
+    }
+    emptyNote.style.display = "none";
+
+    items.forEach((q) => {
+      const item = document.createElement("a");
+      item.href = q.file_url;
+      item.target = "_blank";
+      item.rel = "noopener";
+      item.className = "content-item";
+      item.innerHTML = `
+        <span class="content-title">${q.document_name}</span>
+        <span class="content-meta">${q.subject} · ${q.topic}</span>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  async function loadQuestions() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("level")
+      .eq("id", session.user.id)
+      .single();
+
+    const level = profile ? profile.level : null;
+    document.getElementById("level-note").textContent = level
+      ? "Showing practice questions for " + level
+      : "Level not set on your profile yet — showing everything.";
+
+    let query = supabaseClient.from("questions").select("*").order("topic");
+    if (level) query = query.eq("level", level);
+
+    const { data: questions, error } = await query;
+
+    if (error) {
+      document.getElementById("empty-note").textContent = "Couldn't load questions: " + error.message;
+      document.getElementById("empty-note").style.display = "block";
+      return;
+    }
+
+    allQuestions = questions || [];
+
+    const topics = [...new Set(allQuestions.map((q) => q.topic))];
+    const filterEl = document.getElementById("topic-filter");
+    topics.forEach((t) => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      filterEl.appendChild(opt);
+    });
+
+    renderQuestions(allQuestions);
+  }
+
+  document.getElementById("topic-filter").addEventListener("change", (e) => {
+    const val = e.target.value;
+    renderQuestions(val ? allQuestions.filter((q) => q.topic === val) : allQuestions);
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  loadQuestions();
+</script>
+</body>
+</html>

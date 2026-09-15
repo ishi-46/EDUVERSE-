@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Books — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="books.html">Books</a>
+      <a href="qa.html">Q&amp;A</a>
+    </nav>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px;">
+    <h1>Books</h1>
+    <p id="level-note" class="section-lede">Loading your level…</p>
+
+    <div class="field" style="max-width:220px; margin-top:20px;">
+      <label for="subject-filter">Filter by subject</label>
+      <select id="subject-filter">
+        <option value="">All subjects</option>
+      </select>
+    </div>
+
+    <div id="books-list" class="content-list"></div>
+    <p id="empty-note" style="display:none;">No books have been added for your level yet — check back soon.</p>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  let allBooks = [];
+
+  function renderBooks(books) {
+    const list = document.getElementById("books-list");
+    const emptyNote = document.getElementById("empty-note");
+    list.innerHTML = "";
+
+    if (books.length === 0) {
+      emptyNote.style.display = "block";
+      return;
+    }
+    emptyNote.style.display = "none";
+
+    books.forEach((book) => {
+      const item = document.createElement("a");
+      item.href = book.file_url;
+      item.target = "_blank";
+      item.rel = "noopener";
+      item.className = "content-item";
+      item.innerHTML = `
+        <span class="content-title">${book.title}</span>
+        <span class="content-meta">${book.subject} · ${book.year || ""}</span>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  async function loadBooks() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("level")
+      .eq("id", session.user.id)
+      .single();
+
+    const level = profile ? profile.level : null;
+    document.getElementById("level-note").textContent = level
+      ? "Showing books for " + level
+      : "Level not set on your profile yet — showing everything.";
+
+    let query = supabaseClient.from("books").select("*").order("subject");
+    if (level) query = query.eq("level", level);
+
+    const { data: books, error } = await query;
+
+    if (error) {
+      document.getElementById("empty-note").textContent = "Couldn't load books: " + error.message;
+      document.getElementById("empty-note").style.display = "block";
+      return;
+    }
+
+    allBooks = books || [];
+
+    // Populate subject filter
+    const subjects = [...new Set(allBooks.map((b) => b.subject))];
+    const filterEl = document.getElementById("subject-filter");
+    subjects.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      filterEl.appendChild(opt);
+    });
+
+    renderBooks(allBooks);
+  }
+
+  document.getElementById("subject-filter").addEventListener("change", (e) => {
+    const val = e.target.value;
+    renderBooks(val ? allBooks.filter((b) => b.subject === val) : allBooks);
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  loadBooks();
+</script>
+</body>
+</html>

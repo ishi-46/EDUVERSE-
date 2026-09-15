@@ -97,33 +97,25 @@
     const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
 
-    // Step 1: create the login (Supabase Auth)
-    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+    // Step 1: create the login (Supabase Auth), sending the profile details
+    // along with it — a database trigger saves them into "profiles" automatically.
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name,
+          date_of_birth: dob,
+          level,
+        },
+      },
+    });
 
     if (error) {
       showMessage(error.message, "error");
       submitBtn.disabled = false;
       submitBtn.textContent = "Register";
       return;
-    }
-
-    const user = data.user;
-
-    // Step 2: save the student's profile info (name, DOB, level)
-    if (user) {
-      const { error: profileError } = await supabaseClient.from("profiles").insert({
-        id: user.id,
-        full_name,
-        date_of_birth: dob,
-        level,
-      });
-
-      if (profileError) {
-        showMessage("Account created, but saving your details failed: " + profileError.message, "error");
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Register";
-        return;
-      }
     }
 
     // If email confirmation is ON in Supabase, there's no session yet.
