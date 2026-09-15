@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Register — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+  </div>
+</header>
+
+<main>
+  <div class="auth-page">
+    <div class="auth-card">
+      <h1>Create your account</h1>
+      <p class="auth-lede">Learn, practice, and test — all in one place.</p>
+
+      <p id="form-message" class="form-message"></p>
+
+      <form id="register-form">
+        <div class="field">
+          <label for="full_name">Full name</label>
+          <input type="text" id="full_name" required placeholder="First and last name" />
+        </div>
+
+        <div class="field">
+          <label for="dob">Date of birth</label>
+          <input type="date" id="dob" required />
+        </div>
+
+        <div class="field">
+          <label for="level">Level</label>
+          <select id="level" required>
+            <option value="" disabled selected>Choose your level</option>
+            <optgroup label="Primary">
+              <option>P1</option><option>P2</option><option>P3</option>
+              <option>P4</option><option>P5</option><option>P6</option>
+            </optgroup>
+            <optgroup label="Secondary">
+              <option>S1</option><option>S2</option><option>S3</option>
+              <option>S4</option><option>S5</option><option>S6</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" required placeholder="you@example.com" />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" required minlength="6" placeholder="At least 6 characters" />
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-submit" id="submit-btn">Register</button>
+      </form>
+
+      <p class="auth-switch">Already have an account? <a href="login.html">Log in</a></p>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  const form = document.getElementById("register-form");
+  const messageEl = document.getElementById("form-message");
+  const submitBtn = document.getElementById("submit-btn");
+
+  function showMessage(text, type) {
+    messageEl.textContent = text;
+    messageEl.className = "form-message " + type;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showMessage("", "");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Creating account…";
+
+    const full_name = document.getElementById("full_name").value.trim();
+    const dob = document.getElementById("dob").value;
+    const level = document.getElementById("level").value;
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+
+    // Step 1: create the login (Supabase Auth)
+    const { data, error } = await supabaseClient.auth.signUp({ email, password });
+
+    if (error) {
+      showMessage(error.message, "error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Register";
+      return;
+    }
+
+    const user = data.user;
+
+    // Step 2: save the student's profile info (name, DOB, level)
+    if (user) {
+      const { error: profileError } = await supabaseClient.from("profiles").insert({
+        id: user.id,
+        full_name,
+        date_of_birth: dob,
+        level,
+      });
+
+      if (profileError) {
+        showMessage("Account created, but saving your details failed: " + profileError.message, "error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Register";
+        return;
+      }
+    }
+
+    // If email confirmation is ON in Supabase, there's no session yet.
+    if (!data.session) {
+      showMessage("Account created! Check your email to confirm it, then log in.", "success");
+      submitBtn.textContent = "Check your email";
+      return;
+    }
+
+    showMessage("Account created! Redirecting…", "success");
+    window.location.href = "dashboard.html";
+  });
+</script>
+</body>
+</html>

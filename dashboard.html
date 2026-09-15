@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="dashboard-shell">
+    <h1 id="welcome">Loading your dashboard…</h1>
+    <p id="loading-note">One moment.</p>
+
+    <div class="dashboard-card" id="dashboard-card" style="display:none;">
+      <div class="dashboard-row">
+        <span>Level</span>
+        <span id="level-value">—</span>
+      </div>
+      <div class="dashboard-row">
+        <span>Subscription</span>
+        <span id="subscription-value">—</span>
+      </div>
+      <div class="dashboard-row">
+        <span>Email</span>
+        <span id="email-value">—</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  async function loadDashboard() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+
+    const user = session.user;
+
+    const { data: profile, error } = await supabaseClient
+      .from("profiles")
+      .select("full_name, level, subscription_status")
+      .eq("id", user.id)
+      .single();
+
+    document.getElementById("loading-note").style.display = "none";
+    document.getElementById("dashboard-card").style.display = "block";
+
+    if (error || !profile) {
+      document.getElementById("welcome").textContent = "Welcome!";
+      document.getElementById("level-value").textContent = "Not set yet";
+      document.getElementById("subscription-value").textContent = "Not set yet";
+    } else {
+      document.getElementById("welcome").textContent = "Welcome, " + profile.full_name + "!";
+      document.getElementById("level-value").textContent = profile.level;
+
+      const isActive = profile.subscription_status === "active";
+      const pill = document.createElement("span");
+      pill.className = "status-pill " + (isActive ? "status-active" : "status-inactive");
+      pill.textContent = isActive ? "Active" : "Inactive";
+      const subEl = document.getElementById("subscription-value");
+      subEl.textContent = "";
+      subEl.appendChild(pill);
+    }
+
+    document.getElementById("email-value").textContent = user.email;
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  loadDashboard();
+</script>
+</body>
+</html>

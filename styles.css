@@ -316,3 +316,106 @@ a:focus-visible, button:focus-visible {
   outline: 2px solid var(--green);
   outline-offset: 2px;
 }
+
+/* ---------- Auth pages ---------- */
+.auth-page {
+  min-height: calc(100vh - 68px - 70px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 40px 36px;
+}
+.auth-card h1 {
+  font-size: 1.6rem;
+  margin-bottom: 6px;
+}
+.auth-lede {
+  margin-bottom: 28px;
+  font-size: 0.95rem;
+}
+.field {
+  margin-bottom: 18px;
+}
+.field label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.field input,
+.field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  border-radius: 3px;
+}
+.field input:focus,
+.field select:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 0;
+  background: #fff;
+}
+.auth-submit {
+  width: 100%;
+  justify-content: center;
+  margin-top: 6px;
+}
+.auth-switch {
+  margin-top: 22px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+.auth-switch a {
+  color: var(--green-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+.form-message {
+  font-size: 0.88rem;
+  margin: -6px 0 16px;
+  min-height: 1.2em;
+}
+.form-message.error { color: #A3352E; }
+.form-message.success { color: var(--green-deep); }
+
+/* ---------- Dashboard ---------- */
+.dashboard-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 56px 24px;
+}
+.dashboard-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 32px;
+  margin-top: 24px;
+}
+.dashboard-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+.dashboard-row:last-child { border-bottom: none; }
+.dashboard-row span:first-child { color: var(--text-muted); }
+.dashboard-row span:last-child { font-weight: 600; }
+.status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.status-inactive { background: #F1E4D8; color: #8A5A2B; }
+.status-active { background: #E4EBD9; color: var(--green-deep); }

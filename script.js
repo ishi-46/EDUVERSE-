@@ -12,14 +12,3 @@ if (toggle) {
   });
 }
 
-// Login / Register buttons — placeholders until Supabase Auth is wired up (Phase 2)
-document.querySelectorAll("[data-auth]").forEach((el) => {
-  el.addEventListener("click", (e) => {
-    e.preventDefault();
-    alert(
-      el.dataset.auth === "login"
-        ? "Login is coming in Phase 2, once Supabase Auth is connected."
-        : "Registration is coming in Phase 2, once Supabase Auth is connected."
-    );
-  });
-});
