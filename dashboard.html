@@ -21,6 +21,8 @@
     <nav class="nav-links">
       <a href="books.html">Books</a>
       <a href="qa.html">Q&amp;A</a>
+      <a href="quizzes.html">Quizzes</a>
+      <a href="subscribe.html">Subscribe</a>
     </nav>
     <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
   </div>
@@ -45,6 +47,9 @@
         <span id="email-value">—</span>
       </div>
     </div>
+    <p id="subscribe-prompt" style="display:none; margin-top:20px;">
+      <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
+    </p>
   </div>
 </main>
 
@@ -78,13 +83,17 @@
       document.getElementById("welcome").textContent = "Welcome, " + profile.full_name + "!";
       document.getElementById("level-value").textContent = profile.level;
 
-      const isActive = profile.subscription_status === "active";
+      const status = profile.subscription_status || "inactive";
       const pill = document.createElement("span");
-      pill.className = "status-pill " + (isActive ? "status-active" : "status-inactive");
-      pill.textContent = isActive ? "Active" : "Inactive";
+      pill.className = "status-pill " + (status === "active" ? "status-active" : status === "pending" ? "status-pending" : "status-inactive");
+      pill.textContent = status.charAt(0).toUpperCase() + status.slice(1);
       const subEl = document.getElementById("subscription-value");
       subEl.textContent = "";
       subEl.appendChild(pill);
+
+      if (status !== "active") {
+        document.getElementById("subscribe-prompt").style.display = "block";
+      }
     }
 
     document.getElementById("email-value").textContent = user.email;

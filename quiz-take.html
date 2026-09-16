@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Take Quiz — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="quizzes.html">← Back to quizzes</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px; max-width: 680px;">
+    <h1 id="quiz-title">Loading quiz…</h1>
+
+    <form id="quiz-form"></form>
+
+    <div id="result" style="display:none; margin-top:28px;" class="dashboard-card">
+      <h2 id="result-heading" style="margin-bottom:8px;"></h2>
+      <p id="result-detail" style="margin-bottom:0;"></p>
+    </div>
+
+    <button id="submit-btn" class="btn btn-primary auth-submit" style="margin-top:24px; max-width:220px;">Submit answers</button>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const quizId = params.get("id");
+  let currentUser = null;
+  let questions = [];
+
+  async function loadQuiz() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+    currentUser = session.user;
+
+    if (!quizId) {
+      document.getElementById("quiz-title").textContent = "No quiz selected.";
+      document.getElementById("submit-btn").style.display = "none";
+      return;
+    }
+
+    const { data: quiz } = await supabaseClient
+      .from("quizzes")
+      .select("*")
+      .eq("id", quizId)
+      .single();
+
+    document.getElementById("quiz-title").textContent = quiz ? quiz.title : "Quiz not found";
+
+    const { data: qs, error } = await supabaseClient
+      .from("quiz_questions")
+      .select("*")
+      .eq("quiz_id", quizId);
+
+    if (error || !qs || qs.length === 0) {
+      document.getElementById("quiz-form").innerHTML = "<p>No questions found for this quiz.</p>";
+      document.getElementById("submit-btn").style.display = "none";
+      return;
+    }
+
+    questions = qs;
+    const form = document.getElementById("quiz-form");
+    form.innerHTML = "";
+
+    questions.forEach((q, index) => {
+      const block = document.createElement("div");
+      block.className = "dashboard-card";
+      block.style.marginBottom = "16px";
+
+      const optionsHtml = ["a", "b", "c", "d"].map((letter) => `
+        <label style="display:block; padding:8px 0; cursor:pointer;">
+          <input type="radio" name="q_${q.id}" value="${letter}" style="margin-right:10px;" />
+          ${q["option_" + letter]}
+        </label>
+      `).join("");
+
+      block.innerHTML = `
+        <p style="font-weight:600; margin-bottom:12px;">${index + 1}. ${q.question_text}</p>
+        ${optionsHtml}
+      `;
+      form.appendChild(block);
+    });
+  }
+
+  document.getElementById("submit-btn").addEventListener("click", async () => {
+    if (questions.length === 0) return;
+
+    let score = 0;
+    questions.forEach((q) => {
+      const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
+      if (selected && selected.value === q.correct_option) score++;
+    });
+
+    const { error } = await supabaseClient.from("quiz_attempts").insert({
+      user_id: currentUser.id,
+      quiz_id: quizId,
+      score,
+      total_questions: questions.length,
+    });
+
+    document.getElementById("quiz-form").style.display = "none";
+    document.getElementById("submit-btn").style.display = "none";
+
+    const resultEl = document.getElementById("result");
+    resultEl.style.display = "block";
+    document.getElementById("result-heading").textContent = "You scored " + score + " / " + questions.length;
+    document.getElementById("result-detail").textContent = error
+      ? "Your score couldn't be saved: " + error.message
+      : "Your result has been saved to Your Marks.";
+  });
+
+  loadQuiz();
+</script>
+</body>
+</html>

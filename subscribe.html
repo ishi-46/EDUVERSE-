@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Subscribe — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="books.html">Books</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="quizzes.html">Quizzes</a>
+    </nav>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px; max-width: 640px;">
+    <h1>Subscribe</h1>
+    <p class="section-lede">Pay by MTN MoMo or Airtel Money, then submit your transaction details below. Your account is activated once we review it — usually within a few hours.</p>
+
+    <!-- EDIT THIS BLOCK: put your real MoMo / Airtel numbers here -->
+    <div class="dashboard-card" style="margin-bottom:32px;">
+      <p style="margin-bottom:6px;"><strong>MTN MoMo:</strong> 07XX XXX XXX (replace with your real number)</p>
+      <p style="margin-bottom:0;"><strong>Airtel Money:</strong> 07XX XXX XXX (replace with your real number)</p>
+    </div>
+
+    <p id="form-message" class="form-message"></p>
+
+    <form id="subscribe-form">
+      <div class="field">
+        <label for="plan">Choose your plan</label>
+        <select id="plan" required>
+          <option value="" disabled selected>Select a plan</option>
+          <option value="standard-2weeks" data-amount="1000">Standard — 2 weeks — 1,000 RWF</option>
+          <option value="examyear-2weeks" data-amount="1500">Exam-year (P6/S3/S6) — 2 weeks — 1,500 RWF</option>
+          <option value="standard-month" data-amount="1500">Standard — 1 month — 1,500 RWF</option>
+          <option value="examyear-month" data-amount="2000">Exam-year (P6/S3/S6) — 1 month — 2,000 RWF</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="transaction_id">Transaction ID</label>
+        <input type="text" id="transaction_id" required placeholder="From your MoMo/Airtel confirmation SMS" />
+      </div>
+
+      <div class="field">
+        <label for="screenshot">Payment screenshot</label>
+        <input type="file" id="screenshot" accept="image/*" required />
+      </div>
+
+      <button type="submit" class="btn btn-primary auth-submit" id="submit-btn">Submit for review</button>
+    </form>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  let currentUser = null;
+
+  async function init() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+    currentUser = session.user;
+  }
+
+  const form = document.getElementById("subscribe-form");
+  const messageEl = document.getElementById("form-message");
+  const submitBtn = document.getElementById("submit-btn");
+
+  function showMessage(text, type) {
+    messageEl.textContent = text;
+    messageEl.className = "form-message " + type;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    showMessage("", "");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
+
+    const planSelect = document.getElementById("plan");
+    const plan = planSelect.value;
+    const amount = parseInt(planSelect.selectedOptions[0].dataset.amount, 10);
+    const transactionId = document.getElementById("transaction_id").value.trim();
+    const file = document.getElementById("screenshot").files[0];
+
+    if (!file) {
+      showMessage("Please choose a screenshot.", "error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit for review";
+      return;
+    }
+
+    // Upload screenshot into a folder named after the student's own user id
+    const filePath = `${currentUser.id}/${Date.now()}-${file.name}`;
+    const { error: uploadError } = await supabaseClient.storage
+      .from("payment-screenshots")
+      .upload(filePath, file);
+
+    if (uploadError) {
+      showMessage("Upload failed: " + uploadError.message, "error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit for review";
+      return;
+    }
+
+    const { error: insertError } = await supabaseClient.from("payments").insert({
+      user_id: currentUser.id,
+      plan,
+      amount,
+      transaction_id: transactionId,
+      screenshot_path: filePath,
+      status: "pending",
+    });
+
+    if (insertError) {
+      showMessage("Couldn't save your submission: " + insertError.message, "error");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit for review";
+      return;
+    }
+
+    showMessage("Submitted! You'll be upgraded once it's reviewed.", "success");
+    submitBtn.textContent = "Submitted";
+    form.reset();
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  init();
+</script>
+</body>
+</html>

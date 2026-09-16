@@ -419,6 +419,7 @@ a:focus-visible, button:focus-visible {
 }
 .status-inactive { background: #F1E4D8; color: #8A5A2B; }
 .status-active { background: #E4EBD9; color: var(--green-deep); }
+.status-pending { background: #EFE7D6; color: var(--gold); }
 
 /* ---------- Content lists (Books / Q&A) ---------- */
 .content-list {

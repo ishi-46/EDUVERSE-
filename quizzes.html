@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quizzes — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="books.html">Books</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="quizzes.html">Quizzes</a>
+    </nav>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px;">
+    <h1>Quizzes</h1>
+    <p id="level-note" class="section-lede">Loading your level…</p>
+
+    <h2 style="margin-top:36px; font-size:1.2rem;">Weekly quizzes</h2>
+    <div id="quiz-list" class="content-list"></div>
+    <p id="empty-note" style="display:none;">No quizzes have been added for your level yet — check back soon.</p>
+
+    <h2 style="margin-top:36px; font-size:1.2rem;">Your marks</h2>
+    <div id="attempts-list" class="content-list"></div>
+    <p id="no-attempts-note" style="display:none;">You haven't taken any quizzes yet.</p>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  async function loadQuizzes() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+    const user = session.user;
+
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("level")
+      .eq("id", user.id)
+      .single();
+
+    const level = profile ? profile.level : null;
+    document.getElementById("level-note").textContent = level
+      ? "Showing quizzes for " + level
+      : "Level not set on your profile yet — showing everything.";
+
+    let query = supabaseClient.from("quizzes").select("*").eq("is_challenge", false).order("subject");
+    if (level) query = query.eq("level", level);
+    const { data: quizzes, error } = await query;
+
+    const list = document.getElementById("quiz-list");
+    const emptyNote = document.getElementById("empty-note");
+    list.innerHTML = "";
+
+    if (error || !quizzes || quizzes.length === 0) {
+      emptyNote.style.display = "block";
+    } else {
+      emptyNote.style.display = "none";
+      quizzes.forEach((quiz) => {
+        const item = document.createElement("a");
+        item.href = "quiz-take.html?id=" + quiz.id;
+        item.className = "content-item";
+        item.innerHTML = `
+          <span class="content-title">${quiz.title}</span>
+          <span class="content-meta">${quiz.subject}</span>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    // Your marks
+    const { data: attempts } = await supabaseClient
+      .from("quiz_attempts")
+      .select("score, total_questions, submitted_at, quizzes(title)")
+      .eq("user_id", user.id)
+      .order("submitted_at", { ascending: false });
+
+    const attemptsList = document.getElementById("attempts-list");
+    const noAttemptsNote = document.getElementById("no-attempts-note");
+    attemptsList.innerHTML = "";
+
+    if (!attempts || attempts.length === 0) {
+      noAttemptsNote.style.display = "block";
+    } else {
+      noAttemptsNote.style.display = "none";
+      attempts.forEach((a) => {
+        const row = document.createElement("div");
+        row.className = "content-item";
+        const title = a.quizzes ? a.quizzes.title : "Quiz";
+        const date = new Date(a.submitted_at).toLocaleDateString();
+        row.innerHTML = `
+          <span class="content-title">${title}</span>
+          <span class="content-meta">${a.score}/${a.total_questions} · ${date}</span>
+        `;
+        attemptsList.appendChild(row);
+      });
+    }
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  loadQuizzes();
+</script>
+</body>
+</html>
