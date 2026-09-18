@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Weekly Challenge — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="quizzes.html">← Back to quizzes</a>
+    </nav>
+    <div id="timer" class="status-pill status-pending" style="display:none; margin-left:auto; font-size:1.1rem; padding:8px 16px;">60:00</div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px; max-width: 720px;">
+
+    <!-- Intro screen -->
+    <div id="intro-screen">
+      <p class="eyebrow eyebrow-gold">Weekly challenge</p>
+      <h1 id="challenge-title">Loading…</h1>
+      <p id="challenge-desc" class="section-lede"></p>
+      <button id="start-btn" class="btn btn-primary btn-lg">Start challenge</button>
+    </div>
+
+    <!-- Quiz screen -->
+    <form id="quiz-form" style="display:none;"></form>
+    <button id="submit-btn" class="btn btn-primary auth-submit" style="display:none; margin-top:24px; max-width:220px;">Submit now</button>
+
+    <!-- Result + leaderboard screen -->
+    <div id="result-screen" style="display:none;">
+      <div class="dashboard-card">
+        <h2 id="result-heading" style="margin-bottom:6px;"></h2>
+        <p id="result-detail" style="margin-bottom:0;"></p>
+      </div>
+
+      <h2 style="margin-top:36px; font-size:1.2rem;">Leaderboard</h2>
+      <ol id="leaderboard-list" class="reward-list" style="font-family: var(--font-body);"></ol>
+    </div>
+
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  let currentUser = null;
+  let quiz = null;
+  let questions = [];
+  let timeLeftSeconds = 0;
+  let timerInterval = null;
+  let submitted = false;
+
+  function formatTime(totalSeconds) {
+    const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+    const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+    return m + ":" + s;
+  }
+
+  async function loadChallenge() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = "login.html"; return; }
+    currentUser = session.user;
+
+    const { data: profile } = await supabaseClient
+      .from("profiles").select("level").eq("id", currentUser.id).single();
+    const level = profile ? profile.level : null;
+
+    const { data: quizzes } = await supabaseClient
+      .from("quizzes")
+      .select("*")
+      .eq("is_challenge", true)
+      .eq("level", level)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    quiz = quizzes && quizzes[0];
+
+    if (!quiz) {
+      document.getElementById("challenge-title").textContent = "No challenge available for your level yet";
+      document.getElementById("start-btn").style.display = "none";
+      return;
+    }
+
+    document.getElementById("challenge-title").textContent = quiz.title;
+    document.getElementById("challenge-desc").textContent =
+      "50 questions, " + (quiz.time_limit_minutes || 60) + " minutes. Only one attempt counts, so make it count.";
+
+    // Has this student already attempted this challenge?
+    const { data: existing } = await supabaseClient
+      .from("quiz_attempts")
+      .select("score, total_questions")
+      .eq("user_id", currentUser.id)
+      .eq("quiz_id", quiz.id)
+      .maybeSingle();
+
+    if (existing) {
+      showResult(existing.score, existing.total_questions, "You've already completed this week's challenge.");
+      return;
+    }
+
+    document.getElementById("start-btn").addEventListener("click", startChallenge);
+  }
+
+  async function startChallenge() {
+    const { data: qs, error } = await supabaseClient
+      .from("quiz_questions").select("*").eq("quiz_id", quiz.id);
+
+    if (error || !qs || qs.length === 0) {
+      alert("No questions found for this challenge yet.");
+      return;
+    }
+    questions = qs;
+
+    document.getElementById("intro-screen").style.display = "none";
+    document.getElementById("timer").style.display = "inline-block";
+    document.getElementById("submit-btn").style.display = "block";
+
+    const form = document.getElementById("quiz-form");
+    form.style.display = "block";
+    form.innerHTML = "";
+
+    questions.forEach((q, index) => {
+      const block = document.createElement("div");
+      block.className = "dashboard-card";
+      block.style.marginBottom = "16px";
+      const optionsHtml = ["a", "b", "c", "d"].map((letter) => `
+        <label style="display:block; padding:8px 0; cursor:pointer;">
+          <input type="radio" name="q_${q.id}" value="${letter}" style="margin-right:10px;" />
+          ${q["option_" + letter]}
+        </label>
+      `).join("");
+      block.innerHTML = `<p style="font-weight:600; margin-bottom:12px;">${index + 1}. ${q.question_text}</p>${optionsHtml}`;
+      form.appendChild(block);
+    });
+
+    timeLeftSeconds = (quiz.time_limit_minutes || 60) * 60;
+    document.getElementById("timer").textContent = formatTime(timeLeftSeconds);
+    timerInterval = setInterval(() => {
+      timeLeftSeconds--;
+      document.getElementById("timer").textContent = formatTime(timeLeftSeconds);
+      if (timeLeftSeconds <= 0) {
+        clearInterval(timerInterval);
+        finishChallenge("Time's up! Your answers were submitted automatically.");
+      }
+    }, 1000);
+
+    document.getElementById("submit-btn").addEventListener("click", () => {
+      finishChallenge("Submitted — here's how you did.");
+    });
+  }
+
+  async function finishChallenge(message) {
+    if (submitted) return;
+    submitted = true;
+    clearInterval(timerInterval);
+
+    let score = 0;
+    questions.forEach((q) => {
+      const selected = document.querySelector(`input[name="q_${q.id}"]:checked`);
+      if (selected && selected.value === q.correct_option) score++;
+    });
+
+    await supabaseClient.from("quiz_attempts").insert({
+      user_id: currentUser.id,
+      quiz_id: quiz.id,
+      score,
+      total_questions: questions.length,
+    });
+
+    document.getElementById("quiz-form").style.display = "none";
+    document.getElementById("submit-btn").style.display = "none";
+    document.getElementById("timer").style.display = "none";
+
+    showResult(score, questions.length, message);
+  }
+
+  async function showResult(score, total, message) {
+    document.getElementById("intro-screen").style.display = "none";
+    document.getElementById("result-screen").style.display = "block";
+    document.getElementById("result-heading").textContent = "You scored " + score + " / " + total;
+    document.getElementById("result-detail").textContent = message;
+
+    const { data: leaderboard } = await supabaseClient.rpc("get_challenge_leaderboard", {
+      target_quiz_id: quiz.id,
+    });
+
+    const list = document.getElementById("leaderboard-list");
+    list.innerHTML = "";
+    (leaderboard || []).forEach((entry, i) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="rank">#${i + 1} ${entry.first_name}</span><span class="amount">${entry.score}/${entry.total_questions}</span>`;
+      list.appendChild(li);
+    });
+  }
+
+  loadChallenge();
+</script>
+</body>
+</html>
