@@ -69,7 +69,7 @@
 
     const { data: profile, error } = await supabaseClient
       .from("profiles")
-      .select("full_name, level, subscription_status")
+      .select("full_name, level, subscription_status, is_admin")
       .eq("id", user.id)
       .single();
 
@@ -83,6 +83,13 @@
     } else {
       document.getElementById("welcome").textContent = "Welcome, " + profile.full_name + "!";
       document.getElementById("level-value").textContent = profile.level;
+
+      if (profile.is_admin) {
+        const adminLink = document.createElement("a");
+        adminLink.href = "admin.html";
+        adminLink.textContent = "Admin";
+        document.querySelector(".nav-links").appendChild(adminLink);
+      }
 
       const status = profile.subscription_status || "inactive";
       const pill = document.createElement("span");

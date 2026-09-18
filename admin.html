@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse Admin</span>
+    </a>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px;">
+    <h1>Pending payments</h1>
+    <p id="status-note" class="section-lede">Loading…</p>
+
+    <div id="payments-list" style="margin-top:24px;"></div>
+    <p id="empty-note" style="display:none;">No pending payments right now.</p>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  async function init() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = "login.html"; return; }
+
+    const { data: profile } = await supabaseClient
+      .from("profiles").select("is_admin").eq("id", session.user.id).single();
+
+    if (!profile || !profile.is_admin) {
+      document.getElementById("status-note").textContent = "You don't have access to this page.";
+      return;
+    }
+
+    loadPayments();
+  }
+
+  async function loadPayments() {
+    document.getElementById("status-note").textContent = "Reviewing payments awaiting approval.";
+
+    const { data: payments, error } = await supabaseClient
+      .from("payments")
+      .select("id, plan, amount, transaction_id, screenshot_path, status, created_at, user_id, profiles(full_name, level)")
+      .eq("status", "pending")
+      .order("created_at", { ascending: true });
+
+    const list = document.getElementById("payments-list");
+    const emptyNote = document.getElementById("empty-note");
+    list.innerHTML = "";
+
+    if (error) {
+      list.innerHTML = "<p>Error loading payments: " + error.message + "</p>";
+      return;
+    }
+
+    if (!payments || payments.length === 0) {
+      emptyNote.style.display = "block";
+      return;
+    }
+    emptyNote.style.display = "none";
+
+    for (const p of payments) {
+      const card = document.createElement("div");
+      card.className = "dashboard-card";
+      card.style.marginBottom = "16px";
+
+      const studentName = p.profiles ? p.profiles.full_name : "Unknown student";
+      const studentLevel = p.profiles ? p.profiles.level : "—";
+      const date = new Date(p.created_at).toLocaleString();
+
+      const { data: signed } = await supabaseClient.storage
+        .from("payment-screenshots")
+        .createSignedUrl(p.screenshot_path, 300);
+      const screenshotUrl = signed ? signed.signedUrl : "#";
+
+      card.innerHTML = `
+        <div class="dashboard-row"><span>Student</span><span>${studentName} (${studentLevel})</span></div>
+        <div class="dashboard-row"><span>Plan</span><span>${p.plan}</span></div>
+        <div class="dashboard-row"><span>Amount</span><span>${p.amount} RWF</span></div>
+        <div class="dashboard-row"><span>Transaction ID</span><span>${p.transaction_id}</span></div>
+        <div class="dashboard-row"><span>Submitted</span><span>${date}</span></div>
+        <p style="margin-top:16px;"><a href="${screenshotUrl}" target="_blank" rel="noopener" class="btn btn-ghost">View screenshot</a></p>
+        <div style="display:flex; gap:12px; margin-top:16px;">
+          <button class="btn btn-primary approve-btn" data-id="${p.id}" data-user="${p.user_id}">Approve</button>
+          <button class="btn btn-ghost reject-btn" data-id="${p.id}">Reject</button>
+        </div>
+      `;
+      list.appendChild(card);
+    }
+
+    document.querySelectorAll(".approve-btn").forEach((btn) => {
+      btn.addEventListener("click", () => approvePayment(btn.dataset.id, btn.dataset.user));
+    });
+    document.querySelectorAll(".reject-btn").forEach((btn) => {
+      btn.addEventListener("click", () => rejectPayment(btn.dataset.id));
+    });
+  }
+
+  async function approvePayment(paymentId, userId) {
+    await supabaseClient.from("payments").update({ status: "approved" }).eq("id", paymentId);
+    await supabaseClient.from("profiles").update({ subscription_status: "active" }).eq("id", userId);
+    loadPayments();
+  }
+
+  async function rejectPayment(paymentId) {
+    await supabaseClient.from("payments").update({ status: "rejected" }).eq("id", paymentId);
+    loadPayments();
+  }
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  init();
+</script>
+</body>
+</html>
