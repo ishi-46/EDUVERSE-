@@ -33,37 +33,68 @@
 <main>
   <div class="wrap" style="padding: 48px 24px;">
     <h1>Q&amp;A</h1>
-    <p id="level-note" class="section-lede">Loading your level…</p>
 
-    <div class="field" style="max-width:220px; margin-top:20px;">
-      <label for="topic-filter">Filter by topic</label>
-      <select id="topic-filter">
-        <option value="">All topics</option>
-      </select>
+    <div id="locked-note" style="display:none;" class="dashboard-card">
+      <p style="margin-bottom:16px;">Practice questions are available once your subscription is active.</p>
+      <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
     </div>
 
-    <div id="qa-list" class="content-list"></div>
-    <p id="empty-note" style="display:none;">No practice questions have been added for your level yet — check back soon.</p>
+    <div id="page-content" style="display:none;">
+      <p id="level-note" class="section-lede">Loading your level…</p>
+
+      <div style="display:flex; gap:20px; flex-wrap:wrap;">
+        <div class="field" style="max-width:220px; margin-top:20px;">
+          <label for="topic-filter">Filter by topic</label>
+          <select id="topic-filter">
+            <option value="">All topics</option>
+          </select>
+        </div>
+        <div class="field" id="year-filter-wrap" style="max-width:220px; margin-top:20px; display:none;">
+          <label for="year-filter">Filter by year/level</label>
+          <select id="year-filter">
+            <option value="">All years</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="qa-list" class="content-list"></div>
+      <p id="empty-note" style="display:none;">No practice questions have been added for your level yet — check back soon.</p>
+    </div>
   </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <script>
-  let allQuestions = [];
+  const LEVEL_ORDER = ["P1","P2","P3","P4","P5","P6","S1","S2","S3","S4","S5","S6"];
+  const EXAM_LEVELS = ["P6", "S3", "S6"];
 
-  function renderQuestions(items) {
+  function getAllowedLevels(level) {
+    if (!EXAM_LEVELS.includes(level)) return [level];
+    const idx = LEVEL_ORDER.indexOf(level);
+    const start = Math.max(0, idx - 2);
+    return LEVEL_ORDER.slice(start, idx + 1);
+  }
+
+  let allQuestions = [];
+  let currentFilters = { topic: "", year: "" };
+
+  function renderQuestions() {
     const list = document.getElementById("qa-list");
     const emptyNote = document.getElementById("empty-note");
+    const filtered = allQuestions.filter((q) =>
+      (!currentFilters.topic || q.topic === currentFilters.topic) &&
+      (!currentFilters.year || q.level === currentFilters.year)
+    );
     list.innerHTML = "";
 
-    if (items.length === 0) {
+    if (filtered.length === 0) {
       emptyNote.style.display = "block";
       return;
     }
     emptyNote.style.display = "none";
 
-    items.forEach((q) => {
+    filtered.forEach((q) => {
       const item = document.createElement("a");
       item.href = q.file_url;
       item.target = "_blank";
@@ -71,7 +102,7 @@
       item.className = "content-item";
       item.innerHTML = `
         <span class="content-title">${q.document_name}</span>
-        <span class="content-meta">${q.subject} · ${q.topic}</span>
+        <span class="content-meta">${q.subject} · ${q.topic} · ${q.level}</span>
       `;
       list.appendChild(item);
     });
@@ -86,17 +117,28 @@
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("level")
+      .select("level, subscription_status, is_admin")
       .eq("id", session.user.id)
       .single();
 
+    const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    if (!hasAccess) {
+      document.getElementById("locked-note").style.display = "block";
+      return;
+    }
+    document.getElementById("page-content").style.display = "block";
+
     const level = profile ? profile.level : null;
+    const allowedLevels = level ? getAllowedLevels(level) : null;
+
     document.getElementById("level-note").textContent = level
-      ? "Showing practice questions for " + level
+      ? (allowedLevels.length > 1
+          ? "Showing practice questions for " + allowedLevels.join(", ") + " (exam-year access)"
+          : "Showing practice questions for " + level)
       : "Level not set on your profile yet — showing everything.";
 
     let query = supabaseClient.from("questions").select("*").order("topic");
-    if (level) query = query.eq("level", level);
+    if (allowedLevels) query = query.in("level", allowedLevels);
 
     const { data: questions, error } = await query;
 
@@ -109,20 +151,35 @@
     allQuestions = questions || [];
 
     const topics = [...new Set(allQuestions.map((q) => q.topic))];
-    const filterEl = document.getElementById("topic-filter");
+    const topicFilterEl = document.getElementById("topic-filter");
     topics.forEach((t) => {
       const opt = document.createElement("option");
       opt.value = t;
       opt.textContent = t;
-      filterEl.appendChild(opt);
+      topicFilterEl.appendChild(opt);
     });
 
-    renderQuestions(allQuestions);
+    if (allowedLevels && allowedLevels.length > 1) {
+      document.getElementById("year-filter-wrap").style.display = "block";
+      const yearFilterEl = document.getElementById("year-filter");
+      allowedLevels.forEach((lvl) => {
+        const opt = document.createElement("option");
+        opt.value = lvl;
+        opt.textContent = lvl;
+        yearFilterEl.appendChild(opt);
+      });
+    }
+
+    renderQuestions();
   }
 
   document.getElementById("topic-filter").addEventListener("change", (e) => {
-    const val = e.target.value;
-    renderQuestions(val ? allQuestions.filter((q) => q.topic === val) : allQuestions);
+    currentFilters.topic = e.target.value;
+    renderQuestions();
+  });
+  document.getElementById("year-filter").addEventListener("change", (e) => {
+    currentFilters.year = e.target.value;
+    renderQuestions();
   });
 
   document.getElementById("logout-btn").addEventListener("click", async () => {

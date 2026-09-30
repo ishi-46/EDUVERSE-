@@ -76,7 +76,15 @@
     currentUser = session.user;
 
     const { data: profile } = await supabaseClient
-      .from("profiles").select("level").eq("id", currentUser.id).single();
+      .from("profiles").select("level, subscription_status, is_admin").eq("id", currentUser.id).single();
+
+    const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    if (!hasAccess) {
+      document.getElementById("challenge-title").textContent = "Subscribe to access the Weekly Challenge";
+      document.getElementById("start-btn").style.display = "none";
+      return;
+    }
+
     const level = profile ? profile.level : null;
 
     const { data: quizzes } = await supabaseClient

@@ -32,15 +32,23 @@
 <main>
   <div class="wrap" style="padding: 48px 24px;">
     <h1>Quizzes</h1>
-    <p id="level-note" class="section-lede">Loading your level…</p>
 
-    <h2 style="margin-top:36px; font-size:1.2rem;">Weekly quizzes</h2>
-    <div id="quiz-list" class="content-list"></div>
-    <p id="empty-note" style="display:none;">No quizzes have been added for your level yet — check back soon.</p>
+    <div id="locked-note" style="display:none;" class="dashboard-card">
+      <p style="margin-bottom:16px;">Quizzes are available once your subscription is active.</p>
+      <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
+    </div>
 
-    <h2 style="margin-top:36px; font-size:1.2rem;">Your marks</h2>
-    <div id="attempts-list" class="content-list"></div>
-    <p id="no-attempts-note" style="display:none;">You haven't taken any quizzes yet.</p>
+    <div id="page-content" style="display:none;">
+      <p id="level-note" class="section-lede">Loading your level…</p>
+
+      <h2 style="margin-top:36px; font-size:1.2rem;">Weekly quizzes</h2>
+      <div id="quiz-list" class="content-list"></div>
+      <p id="empty-note" style="display:none;">No quizzes have been added for your level yet — check back soon.</p>
+
+      <h2 style="margin-top:36px; font-size:1.2rem;">Your marks</h2>
+      <div id="attempts-list" class="content-list"></div>
+      <p id="no-attempts-note" style="display:none;">You haven't taken any quizzes yet.</p>
+    </div>
   </div>
 </main>
 
@@ -57,9 +65,16 @@
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("level")
+      .select("level, subscription_status, is_admin")
       .eq("id", user.id)
       .single();
+
+    const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    if (!hasAccess) {
+      document.getElementById("locked-note").style.display = "block";
+      return;
+    }
+    document.getElementById("page-content").style.display = "block";
 
     const level = profile ? profile.level : null;
     document.getElementById("level-note").textContent = level

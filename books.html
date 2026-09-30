@@ -33,37 +33,68 @@
 <main>
   <div class="wrap" style="padding: 48px 24px;">
     <h1>Books</h1>
-    <p id="level-note" class="section-lede">Loading your level…</p>
 
-    <div class="field" style="max-width:220px; margin-top:20px;">
-      <label for="subject-filter">Filter by subject</label>
-      <select id="subject-filter">
-        <option value="">All subjects</option>
-      </select>
+    <div id="locked-note" style="display:none;" class="dashboard-card">
+      <p style="margin-bottom:16px;">Books are available once your subscription is active.</p>
+      <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
     </div>
 
-    <div id="books-list" class="content-list"></div>
-    <p id="empty-note" style="display:none;">No books have been added for your level yet — check back soon.</p>
+    <div id="page-content" style="display:none;">
+      <p id="level-note" class="section-lede">Loading your level…</p>
+
+      <div style="display:flex; gap:20px; flex-wrap:wrap;">
+        <div class="field" style="max-width:220px; margin-top:20px;">
+          <label for="subject-filter">Filter by subject</label>
+          <select id="subject-filter">
+            <option value="">All subjects</option>
+          </select>
+        </div>
+        <div class="field" id="year-filter-wrap" style="max-width:220px; margin-top:20px; display:none;">
+          <label for="year-filter">Filter by year/level</label>
+          <select id="year-filter">
+            <option value="">All years</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="books-list" class="content-list"></div>
+      <p id="empty-note" style="display:none;">No books have been added for your level yet — check back soon.</p>
+    </div>
   </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <script>
-  let allBooks = [];
+  const LEVEL_ORDER = ["P1","P2","P3","P4","P5","P6","S1","S2","S3","S4","S5","S6"];
+  const EXAM_LEVELS = ["P6", "S3", "S6"];
 
-  function renderBooks(books) {
+  function getAllowedLevels(level) {
+    if (!EXAM_LEVELS.includes(level)) return [level];
+    const idx = LEVEL_ORDER.indexOf(level);
+    const start = Math.max(0, idx - 2);
+    return LEVEL_ORDER.slice(start, idx + 1);
+  }
+
+  let allBooks = [];
+  let currentFilters = { subject: "", year: "" };
+
+  function renderBooks() {
     const list = document.getElementById("books-list");
     const emptyNote = document.getElementById("empty-note");
+    const filtered = allBooks.filter((b) =>
+      (!currentFilters.subject || b.subject === currentFilters.subject) &&
+      (!currentFilters.year || b.level === currentFilters.year)
+    );
     list.innerHTML = "";
 
-    if (books.length === 0) {
+    if (filtered.length === 0) {
       emptyNote.style.display = "block";
       return;
     }
     emptyNote.style.display = "none";
 
-    books.forEach((book) => {
+    filtered.forEach((book) => {
       const item = document.createElement("a");
       item.href = book.file_url;
       item.target = "_blank";
@@ -71,7 +102,7 @@
       item.className = "content-item";
       item.innerHTML = `
         <span class="content-title">${book.title}</span>
-        <span class="content-meta">${book.subject} · ${book.year || ""}</span>
+        <span class="content-meta">${book.subject} · ${book.level} · ${book.year || ""}</span>
       `;
       list.appendChild(item);
     });
@@ -86,17 +117,28 @@
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("level")
+      .select("level, subscription_status, is_admin")
       .eq("id", session.user.id)
       .single();
 
+    const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    if (!hasAccess) {
+      document.getElementById("locked-note").style.display = "block";
+      return;
+    }
+    document.getElementById("page-content").style.display = "block";
+
     const level = profile ? profile.level : null;
+    const allowedLevels = level ? getAllowedLevels(level) : null;
+
     document.getElementById("level-note").textContent = level
-      ? "Showing books for " + level
+      ? (allowedLevels.length > 1
+          ? "Showing books for " + allowedLevels.join(", ") + " (exam-year access)"
+          : "Showing books for " + level)
       : "Level not set on your profile yet — showing everything.";
 
     let query = supabaseClient.from("books").select("*").order("subject");
-    if (level) query = query.eq("level", level);
+    if (allowedLevels) query = query.in("level", allowedLevels);
 
     const { data: books, error } = await query;
 
@@ -108,22 +150,37 @@
 
     allBooks = books || [];
 
-    // Populate subject filter
     const subjects = [...new Set(allBooks.map((b) => b.subject))];
-    const filterEl = document.getElementById("subject-filter");
+    const subjectFilterEl = document.getElementById("subject-filter");
     subjects.forEach((s) => {
       const opt = document.createElement("option");
       opt.value = s;
       opt.textContent = s;
-      filterEl.appendChild(opt);
+      subjectFilterEl.appendChild(opt);
     });
 
-    renderBooks(allBooks);
+    // Only show the year/level filter when this student actually has more than one level available
+    if (allowedLevels && allowedLevels.length > 1) {
+      document.getElementById("year-filter-wrap").style.display = "block";
+      const yearFilterEl = document.getElementById("year-filter");
+      allowedLevels.forEach((lvl) => {
+        const opt = document.createElement("option");
+        opt.value = lvl;
+        opt.textContent = lvl;
+        yearFilterEl.appendChild(opt);
+      });
+    }
+
+    renderBooks();
   }
 
   document.getElementById("subject-filter").addEventListener("change", (e) => {
-    const val = e.target.value;
-    renderBooks(val ? allBooks.filter((b) => b.subject === val) : allBooks);
+    currentFilters.subject = e.target.value;
+    renderBooks();
+  });
+  document.getElementById("year-filter").addEventListener("change", (e) => {
+    currentFilters.year = e.target.value;
+    renderBooks();
   });
 
   document.getElementById("logout-btn").addEventListener("click", async () => {
