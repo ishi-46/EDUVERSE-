@@ -55,7 +55,7 @@
 
     const { data: payments, error } = await supabaseClient
       .from("payments")
-      .select("id, plan, amount, transaction_id, screenshot_path, status, created_at, user_id, profiles(full_name, level)")
+      .select("id, plan, amount, payer_phone, transaction_id, screenshot_path, status, created_at, user_id, profiles(full_name, level)")
       .eq("status", "pending")
       .order("created_at", { ascending: true });
 
@@ -83,18 +83,24 @@
       const studentLevel = p.profiles ? p.profiles.level : "—";
       const date = new Date(p.created_at).toLocaleString();
 
-      const { data: signed } = await supabaseClient.storage
-        .from("payment-screenshots")
-        .createSignedUrl(p.screenshot_path, 300);
-      const screenshotUrl = signed ? signed.signedUrl : "#";
+      let screenshotHtml = '<p style="margin-top:16px; color:var(--muted, #666);">No screenshot attached.</p>';
+      if (p.screenshot_path) {
+        const { data: signed } = await supabaseClient.storage
+          .from("payment-screenshots")
+          .createSignedUrl(p.screenshot_path, 300);
+        if (signed) {
+          screenshotHtml = `<p style="margin-top:16px;"><a href="${signed.signedUrl}" target="_blank" rel="noopener" class="btn btn-ghost">View screenshot</a></p>`;
+        }
+      }
 
       card.innerHTML = `
         <div class="dashboard-row"><span>Student</span><span>${studentName} (${studentLevel})</span></div>
         <div class="dashboard-row"><span>Plan</span><span>${p.plan}</span></div>
         <div class="dashboard-row"><span>Amount</span><span>${p.amount} RWF</span></div>
-        <div class="dashboard-row"><span>Transaction ID</span><span>${p.transaction_id}</span></div>
+        <div class="dashboard-row"><span>Paid from</span><span>${p.payer_phone || "—"}</span></div>
+        ${p.transaction_id ? `<div class="dashboard-row"><span>Transaction ID</span><span>${p.transaction_id}</span></div>` : ""}
         <div class="dashboard-row"><span>Submitted</span><span>${date}</span></div>
-        <p style="margin-top:16px;"><a href="${screenshotUrl}" target="_blank" rel="noopener" class="btn btn-ghost">View screenshot</a></p>
+        ${screenshotHtml}
         <div style="display:flex; gap:12px; margin-top:16px;">
           <button class="btn btn-primary approve-btn" data-id="${p.id}" data-user="${p.user_id}">Approve</button>
           <button class="btn btn-ghost reject-btn" data-id="${p.id}">Reject</button>

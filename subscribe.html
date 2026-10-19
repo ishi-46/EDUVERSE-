@@ -21,6 +21,7 @@
     <nav class="nav-links">
       <a href="dashboard.html">Dashboard</a>
       <a href="books.html">Books</a>
+      <a href="past-papers.html">Past papers</a>
       <a href="qa.html">Q&amp;A</a>
       <a href="quizzes.html">Quizzes</a>
       <a href="challenge.html">Challenge</a>
@@ -32,7 +33,7 @@
 <main>
   <div class="wrap" style="padding: 48px 24px; max-width: 640px;">
     <h1>Subscribe</h1>
-    <p class="section-lede">Pay by MTN MoMo or Airtel Money, then submit your transaction details below. Your account is activated once we review it — usually within a few hours.</p>
+    <p class="section-lede">Pay by MTN MoMo or Airtel Money, then enter the phone number you paid from below. A screenshot of the payment message is optional, but it helps us confirm faster. Your account is activated once we review it — usually within a few hours.</p>
 
     <!-- EDIT THIS BLOCK: put your real MoMo / Airtel numbers here -->
     <div class="dashboard-card" style="margin-bottom:32px;">
@@ -55,15 +56,16 @@
       </div>
 
       <div class="field">
-        <label for="transaction_id">Transaction ID</label>
-        <input type="text" id="transaction_id" required placeholder="From your MoMo/Airtel confirmation SMS" />
+        <label for="payer_phone">Phone number you paid from</label>
+        <input type="tel" id="payer_phone" required inputmode="numeric" placeholder="e.g. 0788123456" />
       </div>
 
       <div class="field">
-        <label for="screenshot">Payment screenshot</label>
-        <input type="file" id="screenshot" accept="image/*" required />
+        <label for="screenshot">Payment screenshot (optional)</label>
+        <input type="file" id="screenshot" accept="image/*" />
       </div>
 
+      <p style="font-size:0.85rem;">By submitting you agree to our <a href="terms.html" target="_blank" rel="noopener" style="text-decoration:underline;">Terms and refund policy</a>.</p>
       <button type="submit" class="btn btn-primary auth-submit" id="submit-btn">Submit for review</button>
     </form>
   </div>
@@ -101,34 +103,39 @@
     const planSelect = document.getElementById("plan");
     const plan = planSelect.value;
     const amount = parseInt(planSelect.selectedOptions[0].dataset.amount, 10);
-    const transactionId = document.getElementById("transaction_id").value.trim();
-    const file = document.getElementById("screenshot").files[0];
-
-    if (!file) {
-      showMessage("Please choose a screenshot.", "error");
+    // Phone number the student paid from: keep digits only, accept 07XXXXXXXX or 2507XXXXXXXX
+    let phone = document.getElementById("payer_phone").value.replace(/\D/g, "");
+    if (phone.startsWith("250")) phone = "0" + phone.slice(3);
+    if (!/^07\d{8}$/.test(phone)) {
+      showMessage("Please enter the phone number you paid from, like 0788123456.", "error");
       submitBtn.disabled = false;
       submitBtn.textContent = "Submit for review";
       return;
     }
 
-    // Upload screenshot into a folder named after the student's own user id
-    const filePath = `${currentUser.id}/${Date.now()}-${file.name}`;
-    const { error: uploadError } = await supabaseClient.storage
-      .from("payment-screenshots")
-      .upload(filePath, file);
+    const file = document.getElementById("screenshot").files[0];
 
-    if (uploadError) {
-      showMessage("Upload failed: " + uploadError.message, "error");
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Submit for review";
-      return;
+    // The screenshot is optional. If one was chosen, upload it into a folder named after the student's own user id.
+    let filePath = null;
+    if (file) {
+      filePath = `${currentUser.id}/${Date.now()}-${file.name}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from("payment-screenshots")
+        .upload(filePath, file);
+
+      if (uploadError) {
+        showMessage("Upload failed: " + uploadError.message, "error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Submit for review";
+        return;
+      }
     }
 
     const { error: insertError } = await supabaseClient.from("payments").insert({
       user_id: currentUser.id,
       plan,
       amount,
-      transaction_id: transactionId,
+      payer_phone: phone,
       screenshot_path: filePath,
       status: "pending",
     });
