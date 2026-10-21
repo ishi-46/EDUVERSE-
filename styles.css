@@ -299,9 +299,12 @@ a { color: inherit; }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 760px) {
-  .nav-links { display: none; }
-  .auth-links .btn-ghost { display: none; }
-  .menu-toggle { display: flex; }
+  .header-row { flex-wrap: wrap; height: auto; gap: 10px 12px; padding-top: 10px; padding-bottom: 10px; }
+  .header-row .btn { padding: 8px 14px; font-size: 0.9rem; }
+  .nav-links { order: 3; width: 100%; gap: 20px; overflow-x: auto; white-space: nowrap;
+               padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+  .nav-links a { padding: 4px 0; }
+  .menu-toggle { display: none; }
   .hero-stats { grid-template-columns: 1fr; }
   .challenge-inner, .contact-inner { grid-template-columns: 1fr; }
 }
