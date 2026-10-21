@@ -82,6 +82,15 @@
       return;
     }
     currentUser = session.user;
+
+    // Show only the plans that match the student's level
+    const { data: profile } = await supabaseClient
+      .from("profiles").select("level").eq("id", currentUser.id).single();
+    const isExamYear = profile && ["P6", "S3", "S6"].includes(profile.level);
+    const keep = isExamYear ? "examyear-" : "standard-";
+    document.querySelectorAll("#plan option[value]").forEach((opt) => {
+      if (opt.value && !opt.value.startsWith(keep)) opt.remove();
+    });
   }
 
   const form = document.getElementById("subscribe-form");
