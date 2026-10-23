@@ -43,6 +43,10 @@
         <span>Subscription</span>
         <span id="subscription-value">—</span>
       </div>
+      <div class="dashboard-row" id="ends-row" style="display:none;">
+        <span>Plan ends</span>
+        <span id="ends-value">—</span>
+      </div>
       <div class="dashboard-row">
         <span>Email</span>
         <span id="email-value">—</span>
@@ -69,7 +73,7 @@
 
     const { data: profile, error } = await supabaseClient
       .from("profiles")
-      .select("full_name, level, subscription_status, is_admin")
+      .select("full_name, level, subscription_status, subscription_ends_at, is_admin")
       .eq("id", user.id)
       .single();
 
@@ -91,13 +95,48 @@
         document.querySelector(".nav-links").appendChild(adminLink);
       }
 
-      const status = profile.subscription_status || "inactive";
+      let status = profile.subscription_status || "inactive";
+      const endsAt = profile.subscription_ends_at ? new Date(profile.subscription_ends_at) : null;
+      // If the end date has passed, show inactive straight away (the hourly job will also switch it off)
+      if (!profile.is_admin && status === "active" && (!endsAt || endsAt <= new Date())) {
+        status = "inactive";
+      }
       const pill = document.createElement("span");
       pill.className = "status-pill " + (status === "active" ? "status-active" : status === "pending" ? "status-pending" : "status-inactive");
       pill.textContent = status.charAt(0).toUpperCase() + status.slice(1);
       const subEl = document.getElementById("subscription-value");
       subEl.textContent = "";
       subEl.appendChild(pill);
+
+      const endsRow = document.getElementById("ends-row");
+      const endsEl = document.getElementById("ends-value");
+      if (profile.is_admin) {
+        endsRow.style.display = "flex";
+        endsEl.textContent = "Admin — never expires";
+      } else if (status === "active" && endsAt) {
+        const msLeft = endsAt - new Date();
+        const daysLeft = Math.floor(msLeft / 86400000);
+        const dateText = endsAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+        const timeText = endsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+        let leftText;
+        if (msLeft < 86400000) {
+          leftText = "ends today at " + timeText;
+        } else {
+          leftText = daysLeft + (daysLeft === 1 ? " day" : " days") + " left";
+        }
+        endsRow.style.display = "flex";
+        endsEl.textContent = dateText + " (" + leftText + ")";
+        if (daysLeft <= 3) {
+          endsEl.style.color = "#c0392b";
+          endsEl.style.fontWeight = "600";
+          const prompt = document.getElementById("subscribe-prompt");
+          prompt.querySelector("a").textContent = "Renew now";
+          prompt.style.display = "block";
+        }
+      } else if (endsAt && endsAt <= new Date()) {
+        endsRow.style.display = "flex";
+        endsEl.textContent = "Ended on " + endsAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+      }
 
       if (status !== "active") {
         document.getElementById("subscribe-prompt").style.display = "block";
