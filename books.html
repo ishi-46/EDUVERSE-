@@ -34,8 +34,9 @@
   <div class="wrap" style="padding: 48px 24px;">
     <h1>Books</h1>
 
-    <div id="locked-note" style="display:none;" class="dashboard-card">
-      <p style="margin-bottom:16px;">Books are available once your subscription is active.</p>
+    <div id="free-banner" style="display:none; margin:16px 0 8px;" class="dashboard-card">
+      <p style="margin-bottom:6px; font-weight:600;">You're reading our free summary books.</p>
+      <p style="margin-bottom:14px;">Subscribe to unlock the best books for your level, plus Q&amp;A with answers, quizzes and the Weekly Challenge, from 1,000 RWF for 2 weeks.</p>
       <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
     </div>
 
@@ -77,6 +78,7 @@
   }
 
   let allBooks = [];
+  let isSubscriber = false;
   let currentFilters = { subject: "", year: "" };
 
   function renderBooks() {
@@ -95,15 +97,30 @@
     emptyNote.style.display = "none";
 
     filtered.forEach((book) => {
+      const open = isSubscriber || book.is_free === true;
       const item = document.createElement("a");
-      item.href = book.file_url;
-      item.target = "_blank";
-      item.rel = "noopener";
       item.className = "content-item";
-      item.innerHTML = `
-        <span class="content-title">${book.title}</span>
-        <span class="content-meta">${book.subject} · ${book.level} · ${book.year || ""}</span>
-      `;
+      if (open) {
+        item.href = book.file_url;
+        item.target = "_blank";
+        item.rel = "noopener";
+      } else {
+        item.href = "subscribe.html";
+        item.style.opacity = "0.6";
+        item.title = "Subscribe to open this book";
+      }
+      const badge = book.is_free === true
+        ? ' <span class="status-pill status-active" style="font-size:0.75rem; padding:2px 8px;">Free</span>'
+        : (open ? "" : ' <span class="status-pill status-inactive" style="font-size:0.75rem; padding:2px 8px;">🔒 Subscribers</span>');
+      const title = document.createElement("span");
+      title.className = "content-title";
+      title.textContent = book.title;
+      title.insertAdjacentHTML("beforeend", badge);
+      const meta = document.createElement("span");
+      meta.className = "content-meta";
+      meta.textContent = `${book.subject} · ${book.level}${book.year ? " · " + book.year : ""}`;
+      item.appendChild(title);
+      item.appendChild(meta);
       list.appendChild(item);
     });
   }
@@ -117,14 +134,18 @@
 
     const { data: profile } = await supabaseClient
       .from("profiles")
-      .select("level, subscription_status, is_admin")
+      .select("level, subscription_status, subscription_ends_at, is_admin")
       .eq("id", session.user.id)
       .single();
 
-    const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    let hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    // A plan whose end date has passed counts as not subscribed
+    if (hasAccess && !profile.is_admin && profile.subscription_ends_at && new Date(profile.subscription_ends_at) <= new Date()) {
+      hasAccess = false;
+    }
+    isSubscriber = !!hasAccess;
     if (!hasAccess) {
-      document.getElementById("locked-note").style.display = "block";
-      return;
+      document.getElementById("free-banner").style.display = "block";
     }
     document.getElementById("page-content").style.display = "block";
 
@@ -149,6 +170,10 @@
     }
 
     allBooks = books || [];
+    // Free books first, so non-subscribers see what they can open straight away
+    if (!isSubscriber) {
+      allBooks.sort((a, b) => (b.is_free === true) - (a.is_free === true) || a.subject.localeCompare(b.subject));
+    }
 
     const subjects = [...new Set(allBooks.map((b) => b.subject))];
     const subjectFilterEl = document.getElementById("subject-filter");
