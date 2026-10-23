@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Confirm your email — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+  </div>
+</header>
+
+<main>
+  <div class="auth-page">
+    <div class="auth-card">
+      <h1>Confirm your email</h1>
+      <p class="auth-lede" id="lede">Click the button below to confirm your email and activate your EduVerse account.</p>
+
+      <p id="form-message" class="form-message"></p>
+
+      <button type="button" class="btn btn-primary auth-submit" id="confirm-btn">Confirm my email</button>
+
+      <p class="auth-switch" id="after-link" style="display:none;"><a href="login.html">Go to log in</a></p>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  const messageEl = document.getElementById("form-message");
+  const btn = document.getElementById("confirm-btn");
+  const lede = document.getElementById("lede");
+
+  function showMessage(text, type) {
+    messageEl.textContent = text;
+    messageEl.className = "form-message " + type;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const tokenHash = params.get("token_hash");
+  const type = params.get("type") || "email";
+
+  if (!tokenHash) {
+    btn.style.display = "none";
+    lede.textContent = "";
+    showMessage("Open this page from the confirmation link in your email.", "error");
+    document.getElementById("after-link").style.display = "block";
+  }
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "Confirming…";
+    // Nothing is sent until the student clicks, so email scanners cannot use up the link
+    const { error } = await supabaseClient.auth.verifyOtp({ token_hash: tokenHash, type });
+    if (error) {
+      btn.style.display = "none";
+      lede.textContent = "";
+      showMessage("This confirmation link has expired or was already used. Try logging in. If that fails, register again or contact 01eduverse@gmail.com.", "error");
+      document.getElementById("after-link").style.display = "block";
+      return;
+    }
+    btn.style.display = "none";
+    lede.textContent = "";
+    showMessage("Your email is confirmed. Taking you to your dashboard…", "success");
+    setTimeout(() => { window.location.href = "dashboard.html"; }, 1800);
+  });
+</script>
+</body>
+</html>
