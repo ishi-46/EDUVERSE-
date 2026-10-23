@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reader — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<style>
+  body { background: #eef0ea; }
+  .reader-bar { position: sticky; top: 0; z-index: 10; background: #fff; border-bottom: 1px solid #dfe3d6; }
+  .reader-bar .wrap { display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; }
+  .reader-title { font-weight: 600; flex: 1; min-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reader-controls { display: flex; gap: 6px; align-items: center; }
+  .reader-controls button { border: 1px solid #c9d1b8; background: #fff; border-radius: 8px; padding: 6px 12px; font: inherit; cursor: pointer; }
+  #pages { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .page { background: #fff; margin: 0 auto 16px; box-shadow: 0 1px 6px rgba(0,0,0,.12); position: relative; }
+  .page canvas { display: block; width: 100%; height: auto; }
+  .page-num { text-align: center; font-size: 12px; color: #777; margin: -10px 0 14px; }
+  #status { text-align: center; padding: 60px 16px; color: #444; }
+  /* Make it hard to select, drag or print */
+  #pages, #pages * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  canvas { pointer-events: none; }
+  @media print { body * { display: none !important; } body::after { content: "Printing is not available for this book."; display: block !important; } }
+</style>
+</head>
+<body oncontextmenu="return false">
+
+<div class="reader-bar">
+  <div class="wrap">
+    <a href="books.html" class="btn btn-ghost">← Books</a>
+    <span class="reader-title" id="book-title">Loading…</span>
+    <div class="reader-controls">
+      <button id="zoom-out" aria-label="Zoom out">−</button>
+      <span id="zoom-label">100%</span>
+      <button id="zoom-in" aria-label="Zoom in">+</button>
+    </div>
+  </div>
+</div>
+
+<div id="status">Opening your book…</div>
+<div id="pages"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+  const BUCKET = "experiment-books";
+  const statusEl = document.getElementById("status");
+  const pagesEl = document.getElementById("pages");
+  let pdfDoc = null, zoom = 1, watermark = "", rendered = new Map(), observer = null;
+
+  function fail(msg) { statusEl.innerHTML = msg; statusEl.style.display = "block"; }
+
+  // Block common save / print / view-source shortcuts
+  document.addEventListener("keydown", (e) => {
+    const k = (e.key || "").toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && ["s", "p", "u"].includes(k)) { e.preventDefault(); }
+  });
+  document.addEventListener("dragstart", (e) => e.preventDefault());
+
+  function drawWatermark(ctx, w, h, scale) {
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "#3f5323";
+    ctx.font = `${Math.round(14 * scale)}px sans-serif`;
+    ctx.translate(w / 2, h / 2);
+    ctx.rotate(-Math.PI / 6);
+    const step = 140 * scale;
+    for (let y = -h; y < h; y += step) {
+      for (let x = -w; x < w; x += 360 * scale) {
+        ctx.fillText(watermark, x, y);
+      }
+    }
+    ctx.restore();
+  }
+
+  async function renderPage(num, holder) {
+    const page = await pdfDoc.getPage(num);
+    const base = page.getViewport({ scale: 1 });
+    const cssWidth = Math.min(pagesEl.clientWidth - 32, 860) * zoom;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const scale = (cssWidth / base.width) * dpr;
+    const vp = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = vp.width; canvas.height = vp.height;
+    canvas.style.width = cssWidth + "px";
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    drawWatermark(ctx, vp.width, vp.height, scale);
+    holder.innerHTML = "";
+    holder.appendChild(canvas);
+    holder.style.width = cssWidth + "px";
+    holder.style.height = "auto";
+  }
+
+  function buildPages() {
+    pagesEl.innerHTML = "";
+    rendered.clear();
+    if (observer) observer.disconnect();
+    const cssWidth = Math.min(pagesEl.clientWidth - 32, 860) * zoom;
+    observer = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          const n = +en.target.dataset.page;
+          if (!rendered.get(n)) { rendered.set(n, true); renderPage(n, en.target); }
+        }
+      });
+    }, { rootMargin: "600px 0px" });
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const holder = document.createElement("div");
+      holder.className = "page";
+      holder.dataset.page = i;
+      holder.style.width = cssWidth + "px";
+      holder.style.height = Math.round(cssWidth * 1.414) + "px"; // A4 placeholder
+      pagesEl.appendChild(holder);
+      const num = document.createElement("div");
+      num.className = "page-num";
+      num.textContent = `Page ${i} of ${pdfDoc.numPages}`;
+      pagesEl.appendChild(num);
+      observer.observe(holder);
+    }
+  }
+
+  async function openBook() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = "login.html"; return; }
+
+    const bookId = new URLSearchParams(location.search).get("book");
+    if (!bookId) { fail('No book selected. <a href="books.html">Back to Books</a>'); return; }
+
+    const { data: book, error } = await supabaseClient.from("books").select("*").eq("id", bookId).single();
+    if (error || !book) { fail('Book not found. <a href="books.html">Back to Books</a>'); return; }
+    document.getElementById("book-title").textContent = book.title;
+    document.title = book.title + " — EduVerse";
+
+    const marker = "/" + BUCKET + "/";
+    const idx = (book.file_url || "").indexOf(marker);
+    if (idx === -1) { window.location.href = book.file_url; return; } // not a protected book
+
+    const path = decodeURIComponent(book.file_url.slice(idx + marker.length));
+    // Short-lived private link: works only for subscribers (storage policy) and expires in 2 minutes
+    const { data: signed, error: signErr } = await supabaseClient.storage.from(BUCKET).createSignedUrl(path, 120);
+    if (signErr || !signed) {
+      fail('This book is for subscribers. <a href="subscribe.html">Subscribe to open it</a>.');
+      return;
+    }
+
+    watermark = "studyeduverse.com · " + (session.user.email || "");
+    try {
+      pdfDoc = await pdfjsLib.getDocument({ url: signed.signedUrl }).promise;
+    } catch (e) {
+      fail('Could not open this book. Please refresh the page. <a href="books.html">Back to Books</a>');
+      return;
+    }
+    statusEl.style.display = "none";
+    buildPages();
+  }
+
+  function setZoom(z) {
+    zoom = Math.min(2, Math.max(0.6, z));
+    document.getElementById("zoom-label").textContent = Math.round(zoom * 100) + "%";
+    if (pdfDoc) buildPages();
+  }
+  document.getElementById("zoom-in").addEventListener("click", () => setZoom(zoom + 0.2));
+  document.getElementById("zoom-out").addEventListener("click", () => setZoom(zoom - 0.2));
+  let resizeTimer;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => pdfDoc && buildPages(), 300); });
+
+  openBook();
+</script>
+</body>
+</html>

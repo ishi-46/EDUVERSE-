@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Books — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="index.html">
+      <img src="assets/logo.svg" alt="" class="brand-mark" width="28" height="28" />
+      <span>EduVerse</span>
+    </a>
+    <nav class="nav-links">
+      <a href="dashboard.html">Dashboard</a>
+      <a href="books.html">Books</a>
+      <a href="qa.html">Q&amp;A</a>
+      <a href="quizzes.html">Quizzes</a>
+      <a href="challenge.html">Challenge</a>
+      <a href="subscribe.html">Subscribe</a>
+    </nav>
+    <button class="btn btn-ghost" id="logout-btn" style="margin-left:auto;">Log out</button>
+  </div>
+</header>
+
+<main>
+  <div class="wrap" style="padding: 48px 24px;">
+    <h1>Books</h1>
+
+    <div id="free-banner" style="display:none; margin:16px 0 8px;" class="dashboard-card">
+      <p style="margin-bottom:6px; font-weight:600;">You're reading our free summary books.</p>
+      <p style="margin-bottom:14px;">Subscribe to unlock the best books for your level, plus Q&amp;A with answers, quizzes and the Weekly Challenge, from 1,000 RWF for 2 weeks.</p>
+      <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
+    </div>
+
+    <div id="page-content" style="display:none;">
+      <p id="level-note" class="section-lede">Loading your level…</p>
+
+      <div style="display:flex; gap:20px; flex-wrap:wrap;">
+        <div class="field" style="max-width:220px; margin-top:20px;">
+          <label for="subject-filter">Filter by subject</label>
+          <select id="subject-filter">
+            <option value="">All subjects</option>
+          </select>
+        </div>
+        <div class="field" id="year-filter-wrap" style="max-width:220px; margin-top:20px; display:none;">
+          <label for="year-filter">Filter by year/level</label>
+          <select id="year-filter">
+            <option value="">All years</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="books-list" class="content-list"></div>
+      <p id="empty-note" style="display:none;">No books have been added for your level yet — check back soon.</p>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  const LEVEL_ORDER = ["P1","P2","P3","P4","P5","P6","S1","S2","S3","S4","S5","S6"];
+  const EXAM_LEVELS = ["P6", "S3", "S6"];
+
+  function getAllowedLevels(level) {
+    if (!EXAM_LEVELS.includes(level)) return [level];
+    const idx = LEVEL_ORDER.indexOf(level);
+    const start = Math.max(0, idx - 2);
+    return LEVEL_ORDER.slice(start, idx + 1);
+  }
+
+  let allBooks = [];
+  let isSubscriber = false;
+  let currentFilters = { subject: "", year: "" };
+
+  function renderBooks() {
+    const list = document.getElementById("books-list");
+    const emptyNote = document.getElementById("empty-note");
+    const filtered = allBooks.filter((b) =>
+      (!currentFilters.subject || b.subject === currentFilters.subject) &&
+      (!currentFilters.year || b.level === currentFilters.year)
+    );
+    list.innerHTML = "";
+
+    if (filtered.length === 0) {
+      emptyNote.style.display = "block";
+      return;
+    }
+    emptyNote.style.display = "none";
+
+    filtered.forEach((book) => {
+      const open = isSubscriber || book.is_free === true;
+      const item = document.createElement("a");
+      item.className = "content-item";
+      const protectedBook = (book.file_url || "").includes("/experiment-books/");
+      if (open && protectedBook) {
+        // Paid experiment books open in the reader (no download button)
+        item.href = "reader.html?book=" + encodeURIComponent(book.id);
+      } else if (open) {
+        item.href = book.file_url;
+        item.target = "_blank";
+        item.rel = "noopener";
+      } else {
+        item.href = "subscribe.html";
+        item.style.opacity = "0.6";
+        item.title = "Subscribe to open this book";
+      }
+      const badge = book.is_free === true
+        ? ' <span class="status-pill status-active" style="font-size:0.75rem; padding:2px 8px;">Free</span>'
+        : (open ? "" : ' <span class="status-pill status-inactive" style="font-size:0.75rem; padding:2px 8px;">🔒 Subscribers</span>');
+      const title = document.createElement("span");
+      title.className = "content-title";
+      title.textContent = book.title;
+      title.insertAdjacentHTML("beforeend", badge);
+      const meta = document.createElement("span");
+      meta.className = "content-meta";
+      meta.textContent = `${book.subject} · ${book.level}${book.year ? " · " + book.year : ""}`;
+      item.appendChild(title);
+      item.appendChild(meta);
+      list.appendChild(item);
+    });
+  }
+
+  async function loadBooks() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) {
+      window.location.href = "login.html";
+      return;
+    }
+
+    const { data: profile } = await supabaseClient
+      .from("profiles")
+      .select("level, subscription_status, subscription_ends_at, is_admin")
+      .eq("id", session.user.id)
+      .single();
+
+    let hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    // A plan whose end date has passed counts as not subscribed
+    if (hasAccess && !profile.is_admin && profile.subscription_ends_at && new Date(profile.subscription_ends_at) <= new Date()) {
+      hasAccess = false;
+    }
+    isSubscriber = !!hasAccess;
+    if (!hasAccess) {
+      document.getElementById("free-banner").style.display = "block";
+    }
+    document.getElementById("page-content").style.display = "block";
+
+    const level = profile ? profile.level : null;
+    const allowedLevels = level ? getAllowedLevels(level) : null;
+
+    document.getElementById("level-note").textContent = level
+      ? (allowedLevels.length > 1
+          ? "Showing books for " + allowedLevels.join(", ") + " (exam-year access)"
+          : "Showing books for " + level)
+      : "Level not set on your profile yet — showing everything.";
+
+    let query = supabaseClient.from("books").select("*").order("subject");
+    if (allowedLevels) query = query.in("level", allowedLevels);
+
+    const { data: books, error } = await query;
+
+    if (error) {
+      document.getElementById("empty-note").textContent = "Couldn't load books: " + error.message;
+      document.getElementById("empty-note").style.display = "block";
+      return;
+    }
+
+    allBooks = books || [];
+    // Free books first, so non-subscribers see what they can open straight away
+    if (!isSubscriber) {
+      allBooks.sort((a, b) => (b.is_free === true) - (a.is_free === true) || a.subject.localeCompare(b.subject));
+    }
+
+    const subjects = [...new Set(allBooks.map((b) => b.subject))];
+    const subjectFilterEl = document.getElementById("subject-filter");
+    subjects.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      subjectFilterEl.appendChild(opt);
+    });
+
+    // Only show the year/level filter when this student actually has more than one level available
+    if (allowedLevels && allowedLevels.length > 1) {
+      document.getElementById("year-filter-wrap").style.display = "block";
+      const yearFilterEl = document.getElementById("year-filter");
+      allowedLevels.forEach((lvl) => {
+        const opt = document.createElement("option");
+        opt.value = lvl;
+        opt.textContent = lvl;
+        yearFilterEl.appendChild(opt);
+      });
+    }
+
+    renderBooks();
+  }
+
+  document.getElementById("subject-filter").addEventListener("change", (e) => {
+    currentFilters.subject = e.target.value;
+    renderBooks();
+  });
+  document.getElementById("year-filter").addEventListener("change", (e) => {
+    currentFilters.year = e.target.value;
+    renderBooks();
+  });
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabaseClient.auth.signOut();
+    window.location.href = "index.html";
+  });
+
+  loadBooks();
+</script>
+</body>
+</html>
