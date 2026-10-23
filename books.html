@@ -100,7 +100,11 @@
       const open = isSubscriber || book.is_free === true;
       const item = document.createElement("a");
       item.className = "content-item";
-      if (open) {
+      const protectedBook = (book.file_url || "").includes("/experiment-books/");
+      if (open && protectedBook) {
+        // Paid experiment books open in the reader (no download button)
+        item.href = "reader.html?book=" + encodeURIComponent(book.id);
+      } else if (open) {
         item.href = book.file_url;
         item.target = "_blank";
         item.rel = "noopener";
