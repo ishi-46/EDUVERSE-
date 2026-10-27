@@ -9,16 +9,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
-<script>
-  function esc(t) { return String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-  function mathify(el) {
-    if (window.renderMathInElement) renderMathInElement(el, { throwOnError: false,
-      delimiters: [{ left: "$$", right: "$$", display: true }, { left: "$", right: "$", display: false }] });
-  }
-</script>
 </head>
 <body>
 
@@ -97,40 +87,94 @@
 
     const level = profile ? profile.level : null;
 
+    // All challenges for this level, newest first
     const { data: quizzes } = await supabaseClient
       .from("quizzes")
       .select("*")
       .eq("is_challenge", true)
       .eq("level", level)
       .order("created_at", { ascending: false })
-      .limit(1);
+      .limit(30);
 
-    quiz = quizzes && quizzes[0];
-
-    if (!quiz) {
+    const all = quizzes || [];
+    if (all.length === 0) {
       document.getElementById("challenge-title").textContent = "No challenge available for your level yet";
       document.getElementById("start-btn").style.display = "none";
       return;
     }
 
-    document.getElementById("challenge-title").textContent = quiz.title;
-    document.getElementById("challenge-desc").textContent =
-      "50 questions, " + (quiz.time_limit_minutes || 60) + " minutes. Only one attempt counts, so make it count.";
+    // This week's challenges = the ones created in the same week as the newest one
+    const week = weekKey(all[0].created_at);
+    const group = all.filter((q) => weekKey(q.created_at) === week);
 
-    // Has this student already attempted this challenge?
-    const { data: existing } = await supabaseClient
+    // Has this student already attended one of this week's challenges?
+    const { data: attempts } = await supabaseClient
       .from("quiz_attempts")
-      .select("score, total_questions")
+      .select("quiz_id, score, total_questions")
       .eq("user_id", currentUser.id)
-      .eq("quiz_id", quiz.id)
-      .maybeSingle();
+      .in("quiz_id", group.map((q) => q.id));
 
-    if (existing) {
-      showResult(existing.score, existing.total_questions, "You've already completed this week's challenge.");
+    if (attempts && attempts.length > 0) {
+      const done = attempts[0];
+      quiz = group.find((q) => q.id === done.quiz_id);
+      document.getElementById("challenge-title").textContent = quiz.title;
+      showResult(done.score, done.total_questions, "You've already completed this week's challenge.");
       return;
     }
 
+    // More than one challenge this week (e.g. MPCB and MPGE): the student chooses which one to attend
+    if (group.length > 1) {
+      showChallengePicker(group);
+      return;
+    }
+
+    quiz = group[0];
+    showIntro();
+  }
+
+  // Monday of the week (UTC) for a date, used to group a week's challenges together
+  function weekKey(dateString) {
+    const t = new Date(dateString);
+    t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7));
+    return t.toISOString().slice(0, 10);
+  }
+
+  const TRACK_INFO = {
+    MPCB: "Stream One: Mathematics, Physics, Chemistry, Biology, Entrepreneurship and General Studies (GSCS)",
+    MPGE: "Stream Two: Mathematics, Physics, Geography, Economics, Entrepreneurship and General Studies (GSCS)",
+  };
+
+  function showIntro() {
+    document.getElementById("challenge-title").textContent = quiz.title;
+    document.getElementById("challenge-desc").textContent =
+      "50 questions, " + (quiz.time_limit_minutes || 60) + " minutes. Only one attempt counts, so make it count." +
+      (quiz.combination ? " Questions: " + TRACK_INFO[quiz.combination].split(": ")[1] + "." : "");
+    document.getElementById("start-btn").style.display = "inline-block";
     document.getElementById("start-btn").addEventListener("click", startChallenge);
+  }
+
+  function showChallengePicker(group) {
+    document.getElementById("challenge-title").textContent = "Choose your challenge";
+    document.getElementById("challenge-desc").textContent =
+      "This week there are " + group.length + " challenges. You can attend only ONE of them, so pick your stream. Entrepreneurship (ENT) and General Studies (GSCS) questions are in both streams.";
+    document.getElementById("start-btn").style.display = "none";
+
+    const box = document.createElement("div");
+    box.style.cssText = "display:flex; flex-direction:column; gap:12px; max-width:460px;";
+    group.slice().sort((x, y) => (x.combination || "").localeCompare(y.combination || "")).forEach((q) => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-primary btn-lg";
+      btn.style.textAlign = "left";
+      btn.textContent = q.combination ? TRACK_INFO[q.combination] : q.title;
+      btn.addEventListener("click", () => {
+        if (!confirm("Attend " + (q.combination ? TRACK_INFO[q.combination].split(":")[0] : q.title) + "? You cannot attend the other stream this week.")) return;
+        quiz = q;
+        box.remove();
+        showIntro();
+      });
+      box.appendChild(btn);
+    });
+    document.getElementById("intro-screen").appendChild(box);
   }
 
   async function startChallenge() {
@@ -158,11 +202,11 @@
       const optionsHtml = ["a", "b", "c", "d"].map((letter) => `
         <label style="display:block; padding:8px 0; cursor:pointer;">
           <input type="radio" name="q_${q.id}" value="${letter}" style="margin-right:10px;" />
-          ${esc(q["option_" + letter])}
+          ${q["option_" + letter]}
         </label>
       `).join("");
-      block.innerHTML = `<p style="font-weight:600; margin-bottom:12px;">${index + 1}. ${esc(q.question_text)}</p>${optionsHtml}`;
-      form.appendChild(block); mathify(block);
+      block.innerHTML = `<p style="font-weight:600; margin-bottom:12px;">${index + 1}. ${q.question_text}</p>${optionsHtml}`;
+      form.appendChild(block);
     });
 
     timeLeftSeconds = (quiz.time_limit_minutes || 60) * 60;
@@ -192,12 +236,15 @@
       if (selected && selected.value === q.correct_option) score++;
     });
 
-    await supabaseClient.from("quiz_attempts").insert({
+    const { error: saveError } = await supabaseClient.from("quiz_attempts").insert({
       user_id: currentUser.id,
       quiz_id: quiz.id,
       score,
       total_questions: questions.length,
     });
+    if (saveError) {
+      message = "Your result could not be saved: " + saveError.message;
+    }
 
     document.getElementById("quiz-form").style.display = "none";
     document.getElementById("submit-btn").style.display = "none";
