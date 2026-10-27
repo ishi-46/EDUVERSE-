@@ -44,9 +44,9 @@
 
       <div style="display:flex; gap:20px; flex-wrap:wrap;">
         <div class="field" style="max-width:220px; margin-top:20px;">
-          <label for="topic-filter">Filter by subject</label>
+          <label for="topic-filter">Filter by topic</label>
           <select id="topic-filter">
-            <option value="">All subjects</option>
+            <option value="">All topics</option>
           </select>
         </div>
         <div class="field" id="year-filter-wrap" style="max-width:220px; margin-top:20px; display:none;">
@@ -58,7 +58,7 @@
       </div>
 
       <div id="qa-list" class="content-list"></div>
-      <p id="empty-note" style="display:none;">No Q&amp;A books have been added for your level yet — check back soon.</p>
+      <p id="empty-note" style="display:none;">No practice questions have been added for your level yet — check back soon.</p>
     </div>
   </div>
 </main>
@@ -76,25 +76,15 @@
     return LEVEL_ORDER.slice(start, idx + 1);
   }
 
-  let allBooks = [];
+  let allQuestions = [];
   let currentFilters = { topic: "", year: "" };
-
-  async function openBook(path, el) {
-    const meta = el.querySelector(".content-meta");
-    const old = meta.textContent;
-    meta.textContent = "Opening…";
-    const { data, error } = await supabaseClient.storage.from("qa-books").createSignedUrl(path, 60);
-    meta.textContent = old;
-    if (error) { alert("Couldn't open this book: " + error.message); return; }
-    window.open(data.signedUrl, "_blank", "noopener");
-  }
 
   function renderQuestions() {
     const list = document.getElementById("qa-list");
     const emptyNote = document.getElementById("empty-note");
-    const filtered = allBooks.filter((b) =>
-      (!currentFilters.topic || b.subject === currentFilters.topic) &&
-      (!currentFilters.year || b.class === currentFilters.year)
+    const filtered = allQuestions.filter((q) =>
+      (!currentFilters.topic || q.topic === currentFilters.topic) &&
+      (!currentFilters.year || q.level === currentFilters.year)
     );
     list.innerHTML = "";
 
@@ -104,18 +94,14 @@
     }
     emptyNote.style.display = "none";
 
-    filtered.forEach((b) => {
+    filtered.forEach((q) => {
       const item = document.createElement("a");
-      item.href = "#";
+      item.href = "read.html?u=" + encodeURIComponent(q.file_url) + "&t=" + encodeURIComponent(q.document_name);
       item.className = "content-item";
       item.innerHTML = `
-        <span class="content-title"></span>
-        <span class="content-meta"></span>
+        <span class="content-title">${q.document_name}</span>
+        <span class="content-meta">${q.subject} · ${q.topic} · ${q.level}</span>
       `;
-      item.querySelector(".content-title").textContent = b.class + " " + b.subject + " — Questions & Answers";
-      item.querySelector(".content-meta").textContent =
-        (b.units || "?") + " units · " + (b.questions || "?") + " questions · " + (b.pages || "?") + " pages · PDF";
-      item.addEventListener("click", (e) => { e.preventDefault(); openBook(b.file_path, item); });
       list.appendChild(item);
     });
   }
@@ -140,43 +126,41 @@
     }
     document.getElementById("page-content").style.display = "block";
 
-    // Admins see every class; students see their own level (plus exam-year access)
-    const level = profile && !profile.is_admin ? profile.level : null;
+    const level = profile ? profile.level : null;
     const allowedLevels = level ? getAllowedLevels(level) : null;
 
     document.getElementById("level-note").textContent = level
       ? (allowedLevels.length > 1
-          ? "Showing Q&A books for " + allowedLevels.join(", ") + " (exam-year access)"
-          : "Showing Q&A books for " + level)
-      : "Admin view — showing Q&A books for all classes.";
+          ? "Showing practice questions for " + allowedLevels.join(", ") + " (exam-year access)"
+          : "Showing practice questions for " + level)
+      : "Level not set on your profile yet — showing everything.";
 
-    let query = supabaseClient.from("qa_books").select("*").order("class").order("subject");
-    if (allowedLevels) query = query.in("class", allowedLevels);
+    let query = supabaseClient.from("questions").select("*").order("topic");
+    if (allowedLevels) query = query.in("level", allowedLevels);
 
-    const { data: books, error } = await query;
+    const { data: questions, error } = await query;
 
     if (error) {
-      document.getElementById("empty-note").textContent = "Couldn't load Q&A books: " + error.message;
+      document.getElementById("empty-note").textContent = "Couldn't load questions: " + error.message;
       document.getElementById("empty-note").style.display = "block";
       return;
     }
 
-    allBooks = books || [];
+    allQuestions = questions || [];
 
-    const subjects = [...new Set(allBooks.map((b) => b.subject))].sort();
+    const topics = [...new Set(allQuestions.map((q) => q.topic))];
     const topicFilterEl = document.getElementById("topic-filter");
-    subjects.forEach((s) => {
+    topics.forEach((t) => {
       const opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = s;
+      opt.value = t;
+      opt.textContent = t;
       topicFilterEl.appendChild(opt);
     });
 
-    const years = allowedLevels || LEVEL_ORDER.filter((l) => allBooks.some((b) => b.class === l));
-    if (years.length > 1) {
+    if (allowedLevels && allowedLevels.length > 1) {
       document.getElementById("year-filter-wrap").style.display = "block";
       const yearFilterEl = document.getElementById("year-filter");
-      years.forEach((lvl) => {
+      allowedLevels.forEach((lvl) => {
         const opt = document.createElement("option");
         opt.value = lvl;
         opt.textContent = lvl;

@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reader — EduVerse</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<style>
+  body { background: #e9ebe4; overflow-x: auto; }
+  .reader-bar { position: sticky; top: 0; z-index: 20; background: #F7F8F5; border-bottom: 1px solid #d9dcd2; }
+  .reader-bar-row { display: flex; align-items: center; gap: 10px; padding: 10px 16px; max-width: 1000px; margin: 0 auto; }
+  .reader-title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reader-btn { border: 1px solid #c9cdc0; background: #fff; border-radius: 8px; min-width: 38px; height: 38px; font-size: 1.1rem; cursor: pointer; }
+  .reader-btn:disabled { opacity: .4; cursor: default; }
+  .reader-page-info { font-size: .9rem; color: #555; white-space: nowrap; }
+  #pages { padding: 16px 8px 64px; min-width: min-content; }
+  .pdf-page { margin: 0 auto 12px; background: #fff; box-shadow: 0 1px 6px rgba(0,0,0,.18); display: flex; align-items: center; justify-content: center; color: #888; }
+  .pdf-page canvas { display: block; max-width: 100%; }
+  #office-frame { width: 100%; height: calc(100vh - 62px); border: 0; background: #fff; display: none; }
+  #status { text-align: center; padding: 48px 24px; }
+</style>
+</head>
+<body>
+
+<div class="reader-bar">
+  <div class="reader-bar-row">
+    <a href="books.html" id="back-link" class="btn btn-ghost" style="padding:8px 12px;">← Back</a>
+    <span class="reader-title" id="doc-title">Loading…</span>
+    <span class="reader-page-info" id="page-info"></span>
+    <button class="reader-btn" id="zoom-out" aria-label="Zoom out" disabled>−</button>
+    <button class="reader-btn" id="zoom-in" aria-label="Zoom in" disabled>+</button>
+  </div>
+</div>
+
+<p id="status">Opening…</p>
+<div id="pages"></div>
+<iframe id="office-frame" title="Document"></iframe>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  // Only files from this project's own storage can be opened in the reader
+  const ALLOWED_PREFIX = "https://awnwxkndxfyroumuspsl.supabase.co/storage/v1/object/public/";
+
+  const params = new URLSearchParams(window.location.search);
+  const fileUrl = params.get("u") || "";
+  const title = params.get("t") || "Document";
+
+  const statusEl = document.getElementById("status");
+  const pagesEl = document.getElementById("pages");
+  document.getElementById("doc-title").textContent = title;
+  document.title = title + " — EduVerse";
+  document.getElementById("back-link").addEventListener("click", (e) => {
+    if (document.referrer && document.referrer.startsWith(window.location.origin)) {
+      e.preventDefault();
+      window.history.back();
+    }
+  });
+
+  function fail(message) {
+    statusEl.style.display = "block";
+    statusEl.textContent = message;
+  }
+
+  // ---------- PDF reader ----------
+  let pdfDoc = null;
+  let zoom = 1;
+  let baseAspect = 1.414; // page height / width, replaced by page 1's real shape
+  let observer = null;
+  const rendering = new Set();
+
+  function pageWidth() {
+    const available = Math.min(window.innerWidth - 16, 900);
+    return Math.max(220, Math.round(available * zoom));
+  }
+
+  function layoutPlaceholders() {
+    const w = pageWidth();
+    pagesEl.querySelectorAll(".pdf-page").forEach((box) => {
+      box.style.width = w + "px";
+      box.style.height = Math.round(w * baseAspect) + "px";
+      box.textContent = box.dataset.num;
+      box.dataset.done = "";
+    });
+  }
+
+  async function renderPage(box) {
+    const num = Number(box.dataset.num);
+    if (box.dataset.done === "1" || rendering.has(num)) return;
+    rendering.add(num);
+    try {
+      const page = await pdfDoc.getPage(num);
+      const base = page.getViewport({ scale: 1 });
+      const cssWidth = pageWidth();
+      const scale = cssWidth / base.width;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const viewport = page.getViewport({ scale: scale * ratio });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
+      canvas.style.width = cssWidth + "px";
+      canvas.style.height = Math.round(cssWidth * (base.height / base.width)) + "px";
+
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+      box.textContent = "";
+      box.style.height = canvas.style.height;
+      box.appendChild(canvas);
+      box.dataset.done = "1";
+    } catch (err) {
+      box.textContent = "Couldn't load page " + num;
+    } finally {
+      rendering.delete(num);
+    }
+  }
+
+  function observePages() {
+    if (observer) observer.disconnect();
+    observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) renderPage(entry.target);
+      });
+    }, { rootMargin: "900px 0px" });
+    pagesEl.querySelectorAll(".pdf-page").forEach((box) => observer.observe(box));
+  }
+
+  function updatePageInfo() {
+    if (!pdfDoc) return;
+    const boxes = pagesEl.querySelectorAll(".pdf-page");
+    const mid = window.innerHeight / 3;
+    let current = 1;
+    boxes.forEach((box) => {
+      if (box.getBoundingClientRect().top <= mid) current = Number(box.dataset.num);
+    });
+    document.getElementById("page-info").textContent = current + " / " + pdfDoc.numPages;
+  }
+
+  function setZoom(next) {
+    zoom = Math.min(2.5, Math.max(0.6, next));
+    document.getElementById("zoom-out").disabled = zoom <= 0.6;
+    document.getElementById("zoom-in").disabled = zoom >= 2.5;
+    pagesEl.innerHTML = "";
+    buildPlaceholders();
+  }
+
+  function buildPlaceholders() {
+    for (let i = 1; i <= pdfDoc.numPages; i++) {
+      const box = document.createElement("div");
+      box.className = "pdf-page";
+      box.dataset.num = String(i);
+      pagesEl.appendChild(box);
+    }
+    layoutPlaceholders();
+    observePages();
+    updatePageInfo();
+  }
+
+  async function openPdf() {
+    if (!window.pdfjsLib) { fail("The reader could not load. Check your internet connection and try again."); return; }
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    try {
+      pdfDoc = await pdfjsLib.getDocument({ url: fileUrl }).promise;
+    } catch (err) {
+      fail("This file could not be opened. It may have been moved or renamed.");
+      return;
+    }
+    const first = await pdfDoc.getPage(1);
+    const vp = first.getViewport({ scale: 1 });
+    baseAspect = vp.height / vp.width;
+
+    statusEl.style.display = "none";
+    document.getElementById("zoom-in").disabled = false;
+    document.getElementById("zoom-out").disabled = false;
+    buildPlaceholders();
+
+    window.addEventListener("scroll", updatePageInfo, { passive: true });
+    document.getElementById("zoom-in").addEventListener("click", () => setZoom(zoom + 0.2));
+    document.getElementById("zoom-out").addEventListener("click", () => setZoom(zoom - 0.2));
+    let resizeTimer = null;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => setZoom(zoom), 250);
+    });
+  }
+
+  // ---------- Word documents ----------
+  function openOffice() {
+    statusEl.style.display = "none";
+    document.getElementById("zoom-in").style.display = "none";
+    document.getElementById("zoom-out").style.display = "none";
+    const frame = document.getElementById("office-frame");
+    frame.src = "https://view.officeapps.live.com/op/embed.aspx?src=" + encodeURIComponent(fileUrl);
+    frame.style.display = "block";
+  }
+
+  // ---------- Start ----------
+  async function start() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session) { window.location.href = "login.html"; return; }
+
+    const { data: profile } = await supabaseClient
+      .from("profiles").select("subscription_status, is_admin").eq("id", session.user.id).single();
+    const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+    if (!hasAccess) {
+      statusEl.innerHTML = "";
+      const p = document.createElement("p");
+      p.textContent = "Reading is available once your subscription is active.";
+      const a = document.createElement("a");
+      a.href = "subscribe.html"; a.className = "btn btn-primary"; a.textContent = "Subscribe now";
+      statusEl.appendChild(p); statusEl.appendChild(a);
+      return;
+    }
+
+    if (!fileUrl.startsWith(ALLOWED_PREFIX)) { fail("This file cannot be opened here."); return; }
+
+    const path = fileUrl.split("?")[0].toLowerCase();
+    if (/\.pdf$/.test(path)) openPdf();
+    else if (/\.(docx?|DOCX?)$/i.test(path)) openOffice();
+    else fail("This type of file cannot be shown here.");
+  }
+
+  start();
+</script>
+</body>
+</html>
