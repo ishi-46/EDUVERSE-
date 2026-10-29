@@ -29,6 +29,8 @@
 
       <p id="form-message" class="form-message"></p>
 
+      <div id="closed-box" class="dashboard-card" style="display:none; border-left:4px solid var(--gold, #B8892B); margin-bottom:16px;"></div>
+
       <form id="register-form">
         <div class="field">
           <label for="full_name">Full name</label>
@@ -86,8 +88,45 @@
     messageEl.className = "form-message " + type;
   }
 
+  // Registration is closed every week from Friday 18:00 to Saturday 18:00 (Rwanda time, UTC+2).
+  // The database blocks sign-ups in that window too; this part explains it to the visitor.
+  function registrationWindow() {
+    const RW = 2 * 3600 * 1000;                       // Rwanda is UTC+2 all year
+    const k = new Date(Date.now() + RW);              // "Rwanda clock" read with getUTC*()
+    const day = k.getUTCDay(), hour = k.getUTCHours();
+    const closed = (day === 5 && hour >= 18) || (day === 6 && hour < 18);
+    if (!closed) return { closed: false };
+    const reopen = new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() + (day === 5 ? 1 : 0), 18, 0, 0) - RW);
+    return { closed: true, reopen };
+  }
+
+  function showClosed(reopen) {
+    const box = document.getElementById("closed-box");
+    const fmtDay = new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Kigali", weekday: "long", day: "numeric", month: "long" }).format(reopen);
+    const left = Math.max(0, reopen - Date.now());
+    const h = Math.floor(left / 3600000), m = Math.floor((left % 3600000) / 60000);
+    box.innerHTML = `
+      <p style="font-weight:600; margin-bottom:6px;">Registration is closed right now.</p>
+      <p style="margin-bottom:10px;">New accounts can't be created from <strong>Friday 18:00</strong> to <strong>Saturday 18:00</strong> (Rwanda time).</p>
+      <p style="margin-bottom:4px;">Please come back on <strong>${fmtDay} at 18:00</strong>.</p>
+      <p style="margin-bottom:10px; color: var(--text-muted, #666);">${h === 0 && m === 0 ? "That's in less than a minute." : "That's in " + h + " h " + m + " min."}</p>
+      <p style="margin-bottom:0; font-style:italic;">Kwiyandikisha bifunze kuva ku wa Gatanu saa 18:00 kugeza ku wa Gatandatu saa 18:00. Garuka ku wa Gatandatu saa 18:00.</p>`;
+    box.style.display = "block";
+    form.style.display = "none";
+  }
+
+  function checkWindow() {
+    const w = registrationWindow();
+    if (w.closed) { showClosed(w.reopen); return true; }
+    if (form.style.display === "none") { window.location.reload(); }
+    return false;
+  }
+  checkWindow();
+  setInterval(checkWindow, 30000);
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (checkWindow()) return;
     showMessage("", "");
     submitBtn.disabled = true;
     submitBtn.textContent = "Creating account…";
@@ -113,6 +152,13 @@
     });
 
     if (error) {
+      if (/REGISTRATION_CLOSED|Database error saving new user/i.test(error.message)) {
+        if (registrationWindow().closed) { checkWindow(); return; }
+        showMessage("We couldn't create your account. Registration is closed every Friday 18:00 to Saturday 18:00 (Rwanda time). If it's outside that time, please try again or contact 01eduverse@gmail.com.", "error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Register";
+        return;
+      }
       showMessage(error.message, "error");
       submitBtn.disabled = false;
       submitBtn.textContent = "Register";

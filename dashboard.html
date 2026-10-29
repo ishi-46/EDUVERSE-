@@ -52,6 +52,7 @@
         <span id="email-value">—</span>
       </div>
     </div>
+    <div id="trial-box" style="display:none; margin-top:20px;"></div>
     <p id="subscribe-prompt" style="display:none; margin-top:20px;">
       <a href="subscribe.html" class="btn btn-primary">Subscribe now</a>
     </p>
@@ -60,6 +61,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
+<script src="trial.js"></script>
 <script>
   async function loadDashboard() {
     const { data: { session } } = await supabaseClient.auth.getSession();
@@ -115,7 +117,7 @@
         endsEl.textContent = "Admin — never expires";
       } else if (status === "active" && endsAt) {
         const msLeft = endsAt - new Date();
-        const daysLeft = Math.floor(msLeft / 86400000);
+        const daysLeft = Math.ceil(msLeft / 86400000);
         const dateText = endsAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
         const timeText = endsAt.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
         let leftText;
@@ -151,7 +153,7 @@
     window.location.href = "index.html";
   });
 
-  loadDashboard();
+  loadDashboard().then(() => setupFreeTrial("trial-box"));
 </script>
 </body>
 </html>

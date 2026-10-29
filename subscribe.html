@@ -35,6 +35,8 @@
     <p class="section-lede">Pay by MTN MoMo or Airtel Money, then enter the phone number you paid from below. A screenshot of the payment message is optional, but it helps us confirm faster. Your account is activated once we review it — usually within a few hours.</p>
 
     <!-- EDIT THIS BLOCK: put your real MoMo / Airtel numbers here -->
+    <div id="trial-box-subscribe" style="display:none; margin-bottom:24px;"></div>
+
     <div class="dashboard-card" style="margin-bottom:32px;">
       <p style="margin-bottom:6px;"><strong>MTN MoMo:</strong> 0791667329(Komezusenge Bruno ISHIMWE)</p>
       <p style="margin-bottom:0;"><strong>Airtel Money:</strong> 0735958276(Komezusenge Bruno ISHIMWE)</p>
@@ -72,6 +74,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
+<script src="trial.js"></script>
 <script>
   let currentUser = null;
 
@@ -165,7 +168,7 @@
     window.location.href = "index.html";
   });
 
-  init();
+  init().then(() => setupFreeTrial("trial-box-subscribe"));
 </script>
 </body>
 </html>
