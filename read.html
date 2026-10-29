@@ -164,7 +164,18 @@
     if (!window.pdfjsLib) { fail("The reader could not load. Check your internet connection and try again."); return; }
     pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     try {
-      pdfDoc = await pdfjsLib.getDocument({ url: fileUrl }).promise;
+      // Experiment books live in a private bucket: get a short-lived private link first
+      let openUrl = fileUrl;
+      const PRIVATE = "/object/public/experiment-books/";
+      const at = fileUrl.indexOf(PRIVATE);
+      if (at !== -1) {
+        const filePath = decodeURIComponent(fileUrl.slice(at + PRIVATE.length).split("?")[0]);
+        const { data: signed, error: signErr } = await supabaseClient.storage
+          .from("experiment-books").createSignedUrl(filePath, 120);
+        if (signErr || !signed) { fail("This book is for subscribers. Please check your subscription and try again."); return; }
+        openUrl = signed.signedUrl;
+      }
+      pdfDoc = await pdfjsLib.getDocument({ url: openUrl }).promise;
     } catch (err) {
       fail("This file could not be opened. It may have been moved or renamed.");
       return;
