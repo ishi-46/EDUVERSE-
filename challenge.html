@@ -76,9 +76,24 @@
     currentUser = session.user;
 
     const { data: profile } = await supabaseClient
-      .from("profiles").select("level, subscription_status, is_admin").eq("id", currentUser.id).single();
+      .from("profiles").select("level, subscription_status, subscription_ends_at, trial_ends_at, is_admin").eq("id", currentUser.id).single();
 
     const hasAccess = profile && (profile.is_admin || profile.subscription_status === "active");
+
+    // Students on the 3-day free trial cannot attend the Weekly Challenge
+    const onTrial = profile && !profile.is_admin && profile.trial_ends_at && profile.subscription_ends_at &&
+      Math.abs(new Date(profile.trial_ends_at) - new Date(profile.subscription_ends_at)) < 60000;
+    if (hasAccess && onTrial) {
+      document.getElementById("challenge-title").textContent = "The Weekly Challenge is for subscribed students";
+      document.getElementById("challenge-desc").innerHTML =
+        "Your free trial gives you books, Q&amp;A and quizzes, but not the Weekly Challenge. " +
+        "Subscribe to take part in the challenge and appear on the leaderboard.";
+      const btn = document.getElementById("start-btn");
+      btn.textContent = "Subscribe now";
+      btn.addEventListener("click", () => { window.location.href = "subscribe.html"; });
+      return;
+    }
+
     if (!hasAccess) {
       document.getElementById("challenge-title").textContent = "Subscribe to access the Weekly Challenge";
       document.getElementById("start-btn").style.display = "none";
